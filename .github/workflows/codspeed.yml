@@ -42,7 +42,10 @@ on:
 jobs:
   codspeed:
     name: CodSpeed walltime benchmarks
-    runs-on: codspeed-macro
+    # TEST ONLY (byteoak fork): using ubuntu-latest while CodSpeed
+    # Macro Runner allocation is sorted with support. The upstream
+    # submission (PR #584) keeps codspeed-macro for stable measurement.
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
