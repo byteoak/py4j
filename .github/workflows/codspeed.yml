@@ -37,6 +37,14 @@ on:
     - 'py4j-java/src/main/**'
     - 'py4j-python/requirements-test.txt'
     - '.github/workflows/codspeed.yml'
+  pull_request:
+    branches:
+    - master
+    paths:
+    - 'py4j-python/src/py4j/**/*.py'
+    - 'py4j-java/src/main/**'
+    - 'py4j-python/requirements-test.txt'
+    - '.github/workflows/codspeed.yml'
   workflow_dispatch:
 
 jobs:
