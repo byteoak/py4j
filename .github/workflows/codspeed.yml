@@ -29,14 +29,11 @@ name: codspeed
 # runner). Maintainer action; one-time setup.
 
 on:
-  push:
-    branches:
-    - master
-    paths:
-    - 'py4j-python/src/py4j/**/*.py'
-    - 'py4j-java/src/main/**'
-    - 'py4j-python/requirements-test.txt'
-    - '.github/workflows/codspeed.yml'
+  # Pull-request only + manual dispatch. No push:master trigger — a PR's
+  # merged commit on master would otherwise re-run the same benchmark set
+  # we already ran on the PR head, doubling macro-runner consumption for
+  # no new signal. Trend on master is preserved via CodSpeed's per-PR
+  # records on the dashboard.
   pull_request:
     branches:
     - master
