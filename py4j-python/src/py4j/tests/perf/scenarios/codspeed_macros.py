@@ -82,3 +82,4 @@ def test_macro_scenario(benchmark, macro_gateway):
     if hasattr(scenario, "setup"):
         scenario.setup(gateway)
     benchmark(scenario.measure, gateway)
+# trigger pr_synchronize event to test codspeed PR comment behavior
