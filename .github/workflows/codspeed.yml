@@ -10,16 +10,17 @@ name: codspeed
 # Free for OSS up to 600 macro-runner minutes/month; one run of the
 # benchmark set takes roughly 5-6 minutes.
 #
-# Triggers (intentionally minimal):
+# Triggers:
 #   - push to master: track per-commit perf trend on the dashboard
-#   - workflow_dispatch: manual trigger for PR-time perf verification
-#     (no PR auto-trigger; maintainers dispatch when a change claims a
-#     perf impact, keeping CI cost low on routine PRs)
+#   - pull_request with the `perf-check` label: opt-in per-PR
+#     CodSpeed comments. Maintainers apply the label on PRs whose perf
+#     impact is uncertain; routine PRs don't burn macro-runner budget.
+#   - workflow_dispatch: manual trigger, available always
 #
-# Path filter limits master-push triggers to commits that could plausibly
-# affect performance (py4j Python sources, py4j-java sources, the test
-# requirements file, and this workflow itself). Doc-only commits don't
-# burn macro-runner budget.
+# Path filter limits triggers to commits that could plausibly affect
+# performance (py4j Python sources, py4j-java sources, the test
+# requirements file, and this workflow itself). Doc-only commits
+# don't burn macro-runner budget.
 #
 # Prerequisite (not in this PR): install the CodSpeed GitHub App on the
 # py4j organization:
@@ -37,11 +38,29 @@ on:
     - 'py4j-java/src/main/**'
     - 'py4j-python/requirements-test.txt'
     - '.github/workflows/codspeed.yml'
+  pull_request:
+    types: [labeled, synchronize]
+    branches:
+    - master
+    paths:
+    - 'py4j-python/src/py4j/**/*.py'
+    - 'py4j-java/src/main/**'
+    - 'py4j-python/requirements-test.txt'
+    - '.github/workflows/codspeed.yml'
   workflow_dispatch:
 
 jobs:
   codspeed:
     name: CodSpeed walltime benchmarks
+    # Opt-in per-PR runs gated on the ``perf-check`` label:
+    #   - ``labeled`` events fire only for the perf-check label
+    #   - ``synchronize`` events (new commits on a PR) only fire if the
+    #     PR already carries the label
+    # ``push`` and ``workflow_dispatch`` always run.
+    if: >
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'perf-check') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'perf-check'))
     runs-on: codspeed-macro
     timeout-minutes: 30
     steps:
