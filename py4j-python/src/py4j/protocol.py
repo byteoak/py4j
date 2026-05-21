@@ -234,8 +234,14 @@ def encode_bytearray(barray):
 
 
 def decode_bytearray(encoded):
-    new_bytes = bytes(encoded, encoding="ascii")
-    return bytes([b for b in standard_b64decode(new_bytes)])
+    # Per @PaperTsar's analysis in issue #570: the prior
+    # implementation built a Python list of ints (one PyObject per
+    # byte) then reconstructed bytes from that list — pure overhead
+    # now that Python 2 is no longer a target. standard_b64decode
+    # already returns bytes; the bytes() wrapper preserves the return-
+    # type contract while skipping the intermediate list. ~7.5x on
+    # 256KB payloads in microbenchmarks.
+    return bytes(standard_b64decode(encoded.encode("ascii")))
 
 
 def is_python_proxy(parameter):
