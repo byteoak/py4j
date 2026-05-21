@@ -60,6 +60,12 @@ jobs:
         # backoff (20s, 40s) prevents thundering-herd against an
         # already-troubled CDN. Real test failures still report
         # cleanly via the last attempt's exit code.
+        #
+        # shell: bash is REQUIRED — on windows-latest the default shell
+        # is PowerShell, which does not understand bash's for/do/done
+        # loop syntax. shell: bash uses Git Bash on Windows runners
+        # (preinstalled) for cross-platform consistency.
+        shell: bash
         run: |
           cd py4j-java
           for attempt in 1 2 3; do
