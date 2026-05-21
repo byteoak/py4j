@@ -3,8 +3,11 @@
 The signals pattern is very similar to the listener/observer pattern.
 
 """
+from __future__ import annotations
+
 from inspect import ismethod
 from threading import Lock
+from typing import Any, Callable
 
 
 def make_id(func):
@@ -33,7 +36,7 @@ class Signal(object):
         # number of receivers to be very small.
         self.receivers = []
 
-    def connect(self, receiver, sender=None, unique_id=None):
+    def connect(self, receiver: Callable[..., Any], sender: object = None, unique_id: Any = None) -> None:
         """Registers a receiver for this signal.
 
         The receiver must be a callable (e.g., function or instance method)
@@ -58,7 +61,7 @@ class Signal(object):
             else:
                 self.receivers.append((full_id, receiver))
 
-    def disconnect(self, receiver, sender=None, unique_id=None):
+    def disconnect(self, receiver: Callable[..., Any], sender: object = None, unique_id: Any = None) -> bool:
         """Unregisters a receiver for this signal.
 
         :param receiver: The callable that was registered to receive the
@@ -82,7 +85,7 @@ class Signal(object):
 
         return disconnected
 
-    def send(self, sender, **params):
+    def send(self, sender: object, **params: Any) -> list[tuple[Callable[..., Any], Any]]:
         """Sends the signal to all connected receivers.
 
         If a receiver raises an error, the error is propagated back and

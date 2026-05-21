@@ -6,7 +6,10 @@ Created on Mar 7, 2010
 
 :author: Barthelemy Dagenais
 """
+from __future__ import annotations
+
 from threading import RLock
+from typing import Any
 
 
 class ThreadSafeFinalizer(object):
@@ -28,7 +31,7 @@ class ThreadSafeFinalizer(object):
     lock = RLock()
 
     @classmethod
-    def add_finalizer(cls, id, weak_ref):
+    def add_finalizer(cls, id: Any, weak_ref: Any) -> None:
         """Registers a finalizer with an id.
 
         :param id: The id of the object referenced by the weak reference.
@@ -38,7 +41,7 @@ class ThreadSafeFinalizer(object):
             cls.finalizers[id] = weak_ref
 
     @classmethod
-    def remove_finalizer(cls, id):
+    def remove_finalizer(cls, id: Any) -> None:
         """Removes a finalizer associated with this id.
 
         :param id: The id of the object for which the finalizer will be
@@ -48,7 +51,7 @@ class ThreadSafeFinalizer(object):
             cls.finalizers.pop(id, None)
 
     @classmethod
-    def clear_finalizers(cls, clear_all=False):
+    def clear_finalizers(cls, clear_all: bool = False) -> None:
         """Removes all registered finalizers.
 
         :param clear_all: If `True`, all finalizers are deleted. Otherwise,
