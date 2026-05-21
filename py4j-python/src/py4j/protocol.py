@@ -16,9 +16,15 @@ Created on Oct 14, 2010
 
 :author: Barthelemy Dagenais
 """
+from __future__ import annotations
+
 from base64 import standard_b64encode, standard_b64decode
 
 from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from py4j.java_gateway import PythonProxyPool
 
 
 JAVA_MAX_INT = 2147483647
@@ -168,7 +174,7 @@ ERROR_ON_RECEIVE = "on_receive"
 EMPTY_RESPONSE = "empty_response"
 
 
-def escape_new_line(original):
+def escape_new_line(original: str | bytes) -> str:
     """Replaces new line characters by a backslash followed by a n.
 
     Backslashes are also escaped by another backslash.
@@ -197,7 +203,7 @@ def escape_new_line(original):
         return original
 
 
-def unescape_new_line(escaped):
+def unescape_new_line(escaped: str) -> str:
     """Replaces escaped characters by unescaped characters.
 
     For example, double backslashes are replaced by a single backslash.
@@ -218,7 +224,7 @@ def unescape_new_line(escaped):
         return escaped
 
 
-def smart_decode(s):
+def smart_decode(s: bytes | str) -> str:
     if isinstance(s, str):
         return s
     elif isinstance(s, bytes):
@@ -227,7 +233,7 @@ def smart_decode(s):
         return str(s)
 
 
-def encode_float(float_value):
+def encode_float(float_value: float) -> str:
     # str(float) on Python 3 already returns the same shortest-
     # roundtrip repr that smart_decode(repr(...)) was producing on
     # py2; smart_decode here was a no-op dispatcher.
@@ -241,7 +247,7 @@ def encode_float(float_value):
     return float_str
 
 
-def encode_bytearray(barray):
+def encode_bytearray(barray: bytes | bytearray) -> str:
     if isinstance(barray, bytes):
         return str(standard_b64encode(barray), encoding="ascii")
     else:
@@ -249,7 +255,7 @@ def encode_bytearray(barray):
         return str(standard_b64encode(newbytestr), encoding="ascii")
 
 
-def decode_bytearray(encoded):
+def decode_bytearray(encoded: str) -> bytes:
     # Per @PaperTsar's analysis in issue #570: the prior
     # implementation built a Python list of ints (one PyObject per
     # byte) then reconstructed bytes from that list — pure overhead
@@ -260,7 +266,7 @@ def decode_bytearray(encoded):
     return bytes(standard_b64decode(encoded.encode("ascii")))
 
 
-def is_python_proxy(parameter):
+def is_python_proxy(parameter: object) -> bool:
     """Determines whether parameter is a Python Proxy, i.e., it has a Java
     internal class with an `implements` member.
 
@@ -275,7 +281,7 @@ def is_python_proxy(parameter):
     return is_proxy
 
 
-def get_command_part(parameter, python_proxy_pool=None):
+def get_command_part(parameter: object, python_proxy_pool: PythonProxyPool | None = None) -> str:
     """Converts a Python object into a string representation respecting the
     Py4J protocol.
 
@@ -317,7 +323,7 @@ def get_command_part(parameter, python_proxy_pool=None):
     return command_part
 
 
-def get_return_value(answer, gateway_client, target_id=None, name=None):
+def get_return_value(answer: str, gateway_client, target_id: str | None = None, name: str | None = None):
     """Converts an answer received from the Java gateway into a Python object.
 
     For example, string representation of integers are converted to Python
@@ -400,14 +406,14 @@ def compute_exception_message(default_message, extra_message=None):
     return message
 
 
-def is_error(answer):
+def is_error(answer: str) -> tuple[bool, None]:
     if len(answer) == 0 or answer[0] != SUCCESS:
         return (True, None)
     else:
         return (False, None)
 
 
-def is_fatal_error(answer):
+def is_fatal_error(answer: str) -> bool:
     return answer and len(answer) > 0 and answer[0] == FATAL_ERROR
 
 
@@ -456,22 +462,22 @@ def register_input_converter(converter, prepend=False):
 class Py4JError(Exception):
     """Exception raised when a problem occurs with Py4J."""
 
-    def __init__(self, args=None, cause=None):
-        super(Py4JError, self).__init__(args)
+    def __init__(self, args: str | None = None, cause: BaseException | None = None) -> None:
+        super().__init__(args)
         self.cause = cause
 
 
 class Py4JAuthenticationError(Py4JError):
     """Exception raised when Py4J cannot authenticate a connection."""
-    def __init__(self, args=None, cause=None):
-        super(Py4JAuthenticationError, self).__init__(args)
+    def __init__(self, args: str | None = None, cause: BaseException | None = None) -> None:
+        super().__init__(args)
         self.cause = cause
 
 
 class Py4JNetworkError(Py4JError):
     """Exception raised when a network error occurs with Py4J."""
-    def __init__(self, args=None, cause=None, when=None):
-        super(Py4JNetworkError, self).__init__(args)
+    def __init__(self, args: str | None = None, cause: BaseException | None = None, when: str | None = None) -> None:
+        super().__init__(args)
         self.cause = cause
         self.when = when
 
@@ -487,7 +493,7 @@ class Py4JJavaError(Py4JError):
 
     """
 
-    def __init__(self, msg, java_exception):
+    def __init__(self, msg: str, java_exception) -> None:
         self.args = (msg, java_exception)
         self.errmsg = msg
         self.java_exception = java_exception

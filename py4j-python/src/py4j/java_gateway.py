@@ -9,6 +9,8 @@ Created on Dec 3, 2009
 
 :author: Barthelemy Dagenais
 """
+from __future__ import annotations
+
 from collections import deque
 import logging
 import os
@@ -16,6 +18,7 @@ from pydoc import pager
 from queue import Queue
 import select
 import socket
+import ssl
 import struct
 from subprocess import Popen, PIPE
 import subprocess
@@ -190,7 +193,7 @@ def deprecated(name, last_version, use_instead="", level=logging.DEBUG,
         raise DeprecationWarning(msg)
 
 
-def java_import(jvm_view, import_str):
+def java_import(jvm_view, import_str: str) -> None:
     """Imports the package or class specified by `import_str` in the
     jvm view namespace.
 
@@ -242,12 +245,21 @@ def find_jar_path():
     return ""
 
 
-def launch_gateway(port=0, jarpath="", classpath="", javaopts=[],
-                   die_on_exit=False, redirect_stdout=None,
-                   redirect_stderr=None, daemonize_redirect=True,
-                   java_path="java", create_new_process_group=False,
-                   enable_auth=False, cwd=None, return_proc=False,
-                   use_shell=False):
+def launch_gateway(
+        port: int = 0,
+        jarpath: str = "",
+        classpath: str = "",
+        javaopts: list[str] = [],
+        die_on_exit: bool = False,
+        redirect_stdout=None,
+        redirect_stderr=None,
+        daemonize_redirect: bool = True,
+        java_path: str = "java",
+        create_new_process_group: bool = False,
+        enable_auth: bool = False,
+        cwd: str | None = None,
+        return_proc: bool = False,
+        use_shell: bool = False) -> int | tuple[int, Popen] | tuple[int, str] | tuple[int, str, Popen]:
     """Launch a `Gateway` in a new Java process.
 
     The redirect parameters accept file-like objects, Queue, or deque. When
@@ -397,7 +409,7 @@ def launch_gateway(port=0, jarpath="", classpath="", javaopts=[],
     return output
 
 
-def get_field(java_object, field_name):
+def get_field(java_object, field_name: str):
     """Retrieves the field named `field_name` from the `java_object`.
 
     This function is useful when `auto_field=false` in a gateway or
@@ -423,7 +435,7 @@ def get_field(java_object, field_name):
             field_name)
 
 
-def set_field(java_object, field_name, value):
+def set_field(java_object, field_name: str, value) -> None:
     """Sets the field named `field_name` of `java_object` to `value`.
 
     This function is the only way to set a field because the assignment
@@ -470,7 +482,7 @@ def get_method(java_object, method_name):
         java_object._gateway_client)
 
 
-def is_instance_of(gateway, java_object, java_class):
+def is_instance_of(gateway: JavaGateway, java_object, java_class) -> bool:
     """Indicates whether a java object is an instance of the provided
     java_class.
 
@@ -727,7 +739,7 @@ class OutputConsumer(Thread):
     """
 
     def __init__(self, redirect, stream, *args, **kwargs):
-        super(OutputConsumer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.redirect = redirect
         self.stream = stream
 
@@ -759,7 +771,7 @@ class ProcessConsumer(Thread):
     """
 
     def __init__(self, proc, closable_list, *args, **kwargs):
-        super(ProcessConsumer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.proc = proc
         if closable_list:
             # We don't care if it contains queues or deques, quiet_close will
@@ -782,10 +794,17 @@ class GatewayParameters(object):
     """
 
     def __init__(
-            self, address=DEFAULT_ADDRESS, port=DEFAULT_PORT, auto_field=False,
-            auto_close=True, auto_convert=False, eager_load=False,
-            ssl_context=None, enable_memory_management=True,
-            read_timeout=None, auth_token=None):
+            self,
+            address: str = DEFAULT_ADDRESS,
+            port: int = DEFAULT_PORT,
+            auto_field: bool = False,
+            auto_close: bool = True,
+            auto_convert: bool = False,
+            eager_load: bool = False,
+            ssl_context: ssl.SSLContext | None = None,
+            enable_memory_management: bool = True,
+            read_timeout: float | None = None,
+            auth_token: str | None = None) -> None:
         """
         :param address: the address to which the client will request a
             connection. If you're assing a `SSLContext` with
@@ -845,12 +864,17 @@ class CallbackServerParameters(object):
     """
 
     def __init__(
-            self, address=DEFAULT_ADDRESS, port=DEFAULT_PYTHON_PROXY_PORT,
-            daemonize=False, daemonize_connections=False, eager_load=True,
-            ssl_context=None,
-            accept_timeout=DEFAULT_ACCEPT_TIMEOUT_PLACEHOLDER,
-            read_timeout=None, propagate_java_exceptions=False,
-            auth_token=None):
+            self,
+            address: str = DEFAULT_ADDRESS,
+            port: int = DEFAULT_PYTHON_PROXY_PORT,
+            daemonize: bool = False,
+            daemonize_connections: bool = False,
+            eager_load: bool = True,
+            ssl_context: ssl.SSLContext | None = None,
+            accept_timeout: float | str = DEFAULT_ACCEPT_TIMEOUT_PLACEHOLDER,
+            read_timeout: float | None = None,
+            propagate_java_exceptions: bool = False,
+            auth_token: str | None = None) -> None:
         """
         :param address: the address to which the client will request a
             connection
@@ -1209,7 +1233,7 @@ class GatewayConnection(object):
             msg = "An error occurred while trying to connect to the Java "\
                 "server ({0}:{1})".format(self.address, self.port)
             logger.exception(msg)
-            raise Py4JNetworkError(msg, e)
+            raise Py4JNetworkError(msg, e) from e
 
     def _authenticate_connection(self):
         if self.gateway_parameters.auth_token:
@@ -1279,7 +1303,7 @@ class GatewayConnection(object):
         except Exception as e:
             logger.info("Error while sending.", exc_info=True)
             raise Py4JNetworkError(
-                "Error while sending", e, proto.ERROR_ON_SEND)
+                "Error while sending", e, proto.ERROR_ON_SEND) from e
 
         try:
             # Stream is opened in binary mode (socket.makefile("rb")),
@@ -1849,12 +1873,17 @@ class JavaGateway(object):
     """
 
     def __init__(
-            self, gateway_client=None, auto_field=False,
-            python_proxy_port=DEFAULT_PYTHON_PROXY_PORT,
-            start_callback_server=False, auto_convert=False, eager_load=False,
-            gateway_parameters=None, callback_server_parameters=None,
+            self,
+            gateway_client: GatewayClient | None = None,
+            auto_field: bool = False,
+            python_proxy_port: int = DEFAULT_PYTHON_PROXY_PORT,
+            start_callback_server: bool = False,
+            auto_convert: bool = False,
+            eager_load: bool = False,
+            gateway_parameters: GatewayParameters | None = None,
+            callback_server_parameters: CallbackServerParameters | None = None,
             python_server_entry_point=None,
-            java_process=None):
+            java_process: Popen | None = None) -> None:
         """
         :param gateway_parameters: An instance of `GatewayParameters` used to
             configure the various options of the gateway.
@@ -2323,7 +2352,7 @@ class CallbackServer(object):
             msg = "An error occurred while trying to start the callback "\
                   "server ({0}:{1})".format(self.address, self.port)
             logger.exception(msg)
-            raise Py4JNetworkError(msg, e)
+            raise Py4JNetworkError(msg, e) from e
 
         # Maybe thread needs to be cleanup up?
         self.thread = Thread(target=self.run)
@@ -2460,7 +2489,7 @@ class CallbackConnection(Thread):
     def __init__(
             self, pool, input, socket_instance, gateway_client,
             callback_server_parameters, callback_server):
-        super(CallbackConnection, self).__init__()
+        super().__init__()
         self.pool = pool
         self.input = input
         self.socket = socket_instance
