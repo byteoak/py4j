@@ -267,5 +267,49 @@ class DecimalEncodingTest(unittest.TestCase):
         self.assertIn("-1.5", out)
 
 
+class StringEscapingEdgeCasesTest(unittest.TestCase):
+    """escape_new_line / unescape_new_line round-trip on boundary inputs.
+
+    Existing tests cover plain ASCII. These add: UTF-8 (CJK + emoji),
+    consecutive backslashes, mixed CRLF, embedded nulls. Each is a
+    silent-corruption risk that the current code happens to handle
+    correctly — pin it before any state-machine rewrite (deferred
+    from this PR; gated on this coverage)."""
+
+    def _roundtrip(self, s):
+        return unescape_new_line(escape_new_line(s))
+
+    def test_utf8_cjk(self):
+        s = "\u4e2d\u6587\u30c6\u30b9\u30c8"  # 中文テスト
+        self.assertEqual(self._roundtrip(s), s)
+
+    def test_utf8_emoji(self):
+        s = "hello \U0001F600 world \U0001F4A9"
+        self.assertEqual(self._roundtrip(s), s)
+
+    def test_consecutive_backslashes(self):
+        s = "a\\\\\\b"  # three actual backslashes + b
+        self.assertEqual(self._roundtrip(s), s)
+
+    def test_mixed_crlf(self):
+        s = "line1\r\nline2\nline3\rline4"
+        self.assertEqual(self._roundtrip(s), s)
+
+    def test_null_byte_in_string(self):
+        s = "before\x00after"
+        self.assertEqual(self._roundtrip(s), s)
+
+    def test_empty_string(self):
+        self.assertEqual(self._roundtrip(""), "")
+
+    def test_only_special_chars(self):
+        # CRLF + 2 backslashes + CRLF + 1 backslash — exercises the
+        # interaction between the newline-escape and backslash-escape
+        # paths in a single string (neither test_mixed_crlf nor
+        # test_consecutive_backslashes covers this combination).
+        s = "\r\n\\\\\r\n\\"
+        self.assertEqual(self._roundtrip(s), s)
+
+
 if __name__ == "__main__":
     unittest.main()
