@@ -466,7 +466,8 @@ class JavaList(JavaObject, MutableSequence):
 
     def __repr__(self):
         items = (repr(x) for x in self)
-        return f"[{", ".join(items)}]"
+        inside = ", ".join(items)
+        return f"[{inside}]"
 
 
 class SetConverter(object):
