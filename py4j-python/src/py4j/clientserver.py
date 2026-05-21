@@ -39,10 +39,10 @@ class FinalizerWorker(Thread):
 
     def __init__(self, deque):
         self.deque = deque
-        super(FinalizerWorker, self).__init__()
+        super().__init__()
 
     def run(self):
-        while(True):
+        while True:
             try:
                 task = self.deque.pop()
                 if task == SHUTDOWN_FINALIZER_WORKER:
@@ -119,7 +119,7 @@ class JavaParameters(GatewayParameters):
         :param auth_token: if provided, an authentication that token clients
             must provide to the server when connecting.
         """
-        super(JavaParameters, self).__init__(
+        super().__init__(
             address, port, auto_field, auto_close, auto_convert, eager_load,
             ssl_context, enable_memory_management, read_timeout, auth_token)
         self.auto_gc = auto_gc
@@ -186,7 +186,7 @@ class PythonParameters(CallbackServerParameters):
         :param auth_token: if provided, an authentication token that clients
             must provide to the server when connecting.
         """
-        super(PythonParameters, self).__init__(
+        super().__init__(
             address, port, daemonize, daemonize_connections, eager_load,
             ssl_context, accept_timeout, read_timeout,
             propagate_java_exceptions, auth_token)
@@ -216,7 +216,7 @@ class JavaClient(GatewayClient):
         :param finalizer_deque: deque used to manage garbage collection
             requests.
         """
-        super(JavaClient, self).__init__(
+        super().__init__(
             java_parameters,
             gateway_property=gateway_property)
         self.java_parameters = java_parameters
@@ -233,7 +233,7 @@ class JavaClient(GatewayClient):
         if enqueue:
             self.finalizer_deque.appendleft((self, target_id))
         else:
-            super(JavaClient, self).garbage_collect_object(target_id)
+            super().garbage_collect_object(target_id)
 
     def set_thread_connection(self, connection):
         """Associates a ClientServerConnection with the current thread.
@@ -248,7 +248,7 @@ class JavaClient(GatewayClient):
 
     def shutdown_gateway(self):
         try:
-            super(JavaClient, self).shutdown_gateway()
+            super().shutdown_gateway()
         finally:
             self.finalizer_deque.appendleft(SHUTDOWN_FINALIZER_WORKER)
 
@@ -291,7 +291,7 @@ class JavaClient(GatewayClient):
 
     def _should_retry(self, retry, connection, pne=None):
         # Only retry if Python was driving the communication.
-        parent_retry = super(JavaClient, self)._should_retry(
+        parent_retry = super()._should_retry(
             retry, connection, pne)
         return parent_retry and retry and connection and\
             connection.initiated_from_client
@@ -360,7 +360,7 @@ class PythonServer(CallbackServer):
 
         :param gateway_property: used to keep gateway preferences.
         """
-        super(PythonServer, self).__init__(
+        super().__init__(
             pool=gateway_property.pool,
             gateway_client=java_client,
             callback_server_parameters=python_parameters)
@@ -450,10 +450,7 @@ class ClientServerConnection(object):
 
     def _authenticate_connection(self):
         if self.java_parameters.auth_token:
-            cmd = "{0}\n{1}\n".format(
-                proto.AUTH_COMMAND_NAME,
-                self.java_parameters.auth_token
-            )
+            cmd = f"{proto.AUTH_COMMAND_NAME}\n{self.java_parameters.auth_token}\n"
             answer = self.send_command(cmd)
             error, _ = proto.is_error(answer)
             if error:
@@ -498,10 +495,10 @@ class ClientServerConnection(object):
             logger.info(
                 "Send shutdown request for the Java socket {0}, remote port {1}, local port {2}".
                 format(address, remote_port, local_port))
-            self.socket.sendall("z\n".encode("utf-8"))
-            self.socket.sendall(("%s\n" % address).encode("utf-8"))
-            self.socket.sendall(("%s\n" % remote_port).encode("utf-8"))
-            self.socket.sendall(("%s\n" % local_port).encode("utf-8"))
+            self.socket.sendall(b"z\n")
+            self.socket.sendall(f"{address}\n".encode("utf-8"))
+            self.socket.sendall(f"{remote_port}\n".encode("utf-8"))
+            self.socket.sendall(f"{local_port}\n".encode("utf-8"))
             logger.info("Close connection")
             self.close()
             self.is_connected = False
@@ -520,18 +517,18 @@ class ClientServerConnection(object):
 
     def send_command(self, command):
         # TODO At some point extract common code from wait_for_commands
-        logger.debug("Command to send: {0}".format(command))
+        logger.debug(f"Command to send: {command}")
         try:
             self.socket.sendall(command.encode("utf-8"))
         except Exception as e:
             logger.info("Error while sending or receiving.", exc_info=True)
             raise Py4JNetworkError(
-                "Error while sending", e, proto.ERROR_ON_SEND)
+                "Error while sending", e, proto.ERROR_ON_SEND) from e
 
         try:
             while True:
                 answer = self.stream.readline()[:-1].decode("utf-8")
-                logger.debug("Answer received: {0}".format(answer))
+                logger.debug(f"Answer received: {answer}")
                 # Happens when a the other end is dead. There might be an empty
                 # answer before the socket raises an error.
                 if answer.strip() == "":
@@ -552,7 +549,7 @@ class ClientServerConnection(object):
                         self.socket.sendall(
                             proto.SUCCESS_RETURN_MESSAGE.encode("utf-8"))
                     else:
-                        logger.error("Unknown command {0}".format(command))
+                        logger.error(f"Unknown command {command}")
                         # We're sending something to prevent blocking,
                         # but at this point, the protocol is broken.
                         self.socket.sendall(
@@ -611,7 +608,7 @@ class ClientServerConnection(object):
                     self.socket.sendall(
                         proto.SUCCESS_RETURN_MESSAGE.encode("utf-8"))
                 else:
-                    logger.error("Unknown command {0}".format(command))
+                    logger.error(f"Unknown command {command}")
                     # We're sending something to prevent blocking, but at this
                     # point, the protocol is broken.
                     self.socket.sendall(
@@ -701,7 +698,7 @@ class ClientServer(JavaGateway):
             python_parameters = PythonParameters()
         self.java_parameters = java_parameters
         self.python_parameters = python_parameters
-        super(ClientServer, self).__init__(
+        super().__init__(
             gateway_parameters=java_parameters,
             callback_server_parameters=python_parameters,
             python_server_entry_point=python_server_entry_point

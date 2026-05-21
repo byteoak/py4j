@@ -395,8 +395,7 @@ def compute_exception_message(default_message, extra_message=None):
     """
     message = default_message
     if extra_message:
-        message = "{0} -- {1}".format(
-            default_message, extra_message)
+        message = f"{default_message} -- {extra_message}"
     return message
 
 
@@ -457,21 +456,21 @@ class Py4JError(Exception):
     """Exception raised when a problem occurs with Py4J."""
 
     def __init__(self, args=None, cause=None):
-        super(Py4JError, self).__init__(args)
+        super().__init__(args)
         self.cause = cause
 
 
 class Py4JAuthenticationError(Py4JError):
     """Exception raised when Py4J cannot authenticate a connection."""
     def __init__(self, args=None, cause=None):
-        super(Py4JAuthenticationError, self).__init__(args)
+        super().__init__(args)
         self.cause = cause
 
 
 class Py4JNetworkError(Py4JError):
     """Exception raised when a network error occurs with Py4J."""
     def __init__(self, args=None, cause=None, when=None):
-        super(Py4JNetworkError, self).__init__(args)
+        super().__init__(args)
         self.cause = cause
         self.when = when
 
@@ -498,4 +497,4 @@ class Py4JJavaError(Py4JError):
         gateway_client = self.java_exception._gateway_client
         answer = gateway_client.send_command(self.exception_cmd)
         return_value = get_return_value(answer, gateway_client, None, None)
-        return "{0}: {1}".format(self.errmsg, return_value)
+        return f"{self.errmsg}: {return_value}"

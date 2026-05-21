@@ -88,7 +88,7 @@ class JavaMap(JavaObject, MutableMapping):
 
     def __repr__(self):
         items = (
-            "{0}: {1}".format(repr(k), repr(v))
+            f"{repr(k)}: {repr(v)}"
             for k, v in self.items())
         return "{{{0}}}".format(", ".join(items))
 
@@ -190,8 +190,7 @@ class JavaArray(JavaObject, Sequence):
         elif isinstance(key, int):
             return self.__compute_item(key)
         else:
-            raise TypeError("array indices must be integers, not {0}".format(
-                key.__class__.__name__))
+            raise TypeError(f"array indices must be integers, not {key.__class__.__name__}")
 
     def __repl_item_from_slice(self, range, iterable):
         value_iter = iter(iterable)
@@ -220,15 +219,14 @@ class JavaArray(JavaObject, Sequence):
             if lenr != lenv:
                 raise ValueError(
                     "attempt to assign sequence of size "
-                    "{0} to extended slice of size {1}".format(lenv, lenr))
+                    f"{lenv} to extended slice of size {lenr}")
             else:
                 return self.__repl_item_from_slice(self_range, value)
 
         elif isinstance(key, int):
             return self.__set_item(key, value)
         else:
-            raise TypeError("list indices must be integers, not {0}".format(
-                key.__class__.__name__))
+            raise TypeError(f"list indices must be integers, not {key.__class__.__name__}")
 
     def __len__(self):
         command = proto.ARRAY_COMMAND_NAME +\
@@ -334,15 +332,14 @@ class JavaList(JavaObject, MutableSequence):
                 if lenr != lenv:
                     raise ValueError(
                         "attempt to assign sequence of size "
-                        "{0} to extended slice of size {1}".format(lenv, lenr))
+                        f"{lenv} to extended slice of size {lenr}")
                 else:
                     return self.__repl_item_from_slice(self_range, value)
 
         elif isinstance(key, int):
             return self.__set_item(key, value)
         else:
-            raise TypeError("list indices must be integers, not {0}".format(
-                key.__class__.__name__))
+            raise TypeError(f"list indices must be integers, not {key.__class__.__name__}")
 
     def __get_slice(self, indices):
         command = proto.LIST_COMMAND_NAME +\
@@ -361,8 +358,7 @@ class JavaList(JavaObject, MutableSequence):
         elif isinstance(key, int):
             return self.__compute_item(key)
         else:
-            raise TypeError("list indices must be integers, not {0}".format(
-                key.__class__.__name__))
+            raise TypeError(f"list indices must be integers, not {key.__class__.__name__}")
 
     def __delitem__(self, key):
         if isinstance(key, slice):
@@ -374,8 +370,7 @@ class JavaList(JavaObject, MutableSequence):
         elif isinstance(key, int):
             return self.__del_item(key)
         else:
-            raise TypeError("list indices must be integers, not {0}".format(
-                key.__class__.__name__))
+            raise TypeError(f"list indices must be integers, not {key.__class__.__name__}")
 
     def __contains__(self, item):
         return self.contains(item)
@@ -421,8 +416,7 @@ class JavaList(JavaObject, MutableSequence):
             new_key = self.__compute_index(key, True)
             return self.add(new_key, value)
         else:
-            raise TypeError("list indices must be integers, not {0}".format(
-                key.__class__.__name__))
+            raise TypeError(f"list indices must be integers, not {key.__class__.__name__}")
 
     def extend(self, other_list):
         self.addAll(other_list)
@@ -472,7 +466,7 @@ class JavaList(JavaObject, MutableSequence):
 
     def __repr__(self):
         items = (repr(x) for x in self)
-        return "[{0}]".format(", ".join(items))
+        return f"[{", ".join(items)}]"
 
 
 class SetConverter(object):

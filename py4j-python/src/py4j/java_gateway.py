@@ -211,8 +211,8 @@ def find_jar_path():
     """Tries to find the path where the py4j jar is located.
     """
     paths = []
-    jar_file = "py4j{0}.jar".format(__version__)
-    maven_jar_file = "py4j-{0}.jar".format(__version__)
+    jar_file = f"py4j{__version__}.jar"
+    maven_jar_file = f"py4j-{__version__}.jar"
     paths.append(jar_file)
     # ant
     paths.append(os.path.join(os.path.dirname(
@@ -319,7 +319,7 @@ def launch_gateway(port=0, jarpath="", classpath="", javaopts=[],
 
     # Fail if the jar does not exist.
     if not os.path.exists(jarpath):
-        raise Py4JError("Could not find py4j jar at {0}".format(jarpath))
+        raise Py4JError(f"Could not find py4j jar at {jarpath}")
 
     # Launch the server in a subprocess.
     classpath = os.pathsep.join((jarpath, classpath))
@@ -330,7 +330,7 @@ def launch_gateway(port=0, jarpath="", classpath="", javaopts=[],
     if enable_auth:
         command.append("--enable-auth")
     command.append(str(port))
-    logger.debug("Launching gateway with command {0}".format(command))
+    logger.debug(f"Launching gateway with command {command}")
 
     # stderr redirection
     close_stderr = False
@@ -414,8 +414,7 @@ def get_field(java_object, field_name):
 
     if answer == proto.NO_MEMBER_COMMAND or has_error:
         message = compute_exception_message(
-            "no field {0} in object {1}".format(
-                field_name, java_object._target_id), error_message)
+            f"no field {field_name} in object {java_object._target_id}", error_message)
         raise Py4JError(message)
     else:
         return get_return_value(
@@ -447,8 +446,7 @@ def set_field(java_object, field_name, value):
 
     if answer == proto.NO_MEMBER_COMMAND or has_error:
         message = compute_exception_message(
-            "no field {0} in object {1}".format(
-                field_name, java_object._target_id), error_message)
+            f"no field {field_name} in object {java_object._target_id}", error_message)
         raise Py4JError(message)
     return get_return_value(
         answer, java_object._gateway_client, java_object._target_id,
@@ -638,8 +636,8 @@ def do_client_auth(command, input_stream, sock, auth_token):
     """
     try:
         if command != proto.AUTH_COMMAND_NAME:
-            raise Py4JAuthenticationError("Expected {}, received {}.".format(
-                proto.AUTH_COMMAND_NAME, command))
+            raise Py4JAuthenticationError(
+                f"Expected {proto.AUTH_COMMAND_NAME}, received {command}.")
 
         client_token = input_stream.readline()[:-1].decode("utf-8")
         # Remove the END marker
@@ -717,8 +715,7 @@ def _garbage_collect_proxy(pool, proxy_id):
             success = True
         except KeyError:
             logger.warning(
-                "Tried to garbage collect non existing python proxy {0}"
-                .format(proxy_id))
+                f"Tried to garbage collect non existing python proxy {proxy_id}")
     return success
 
 
@@ -727,7 +724,7 @@ class OutputConsumer(Thread):
     """
 
     def __init__(self, redirect, stream, *args, **kwargs):
-        super(OutputConsumer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.redirect = redirect
         self.stream = stream
 
@@ -759,7 +756,7 @@ class ProcessConsumer(Thread):
     """
 
     def __init__(self, proc, closable_list, *args, **kwargs):
-        super(ProcessConsumer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.proc = proc
         if closable_list:
             # We don't care if it contains queues or deques, quiet_close will
@@ -1115,11 +1112,11 @@ class GatewayClient(object):
                             (next_conn.socket.getsockname() == local_addr or \
                             next_conn.socket.getpeername() == remote_addr)
                         if socket_match:
-                            logger.info("Shutting down matched socket {0}".format(next_conn.socket))
+                            logger.info(f"Shutting down matched socket {next_conn.socket}")
                             # We send local port as remote and remote port as local for JVM part
                             # of the connection.
                             next_conn.shutdown_socket(local_addr[1], remote_addr[1])
-                            logger.info("Finished shutdown of socket {0}".format(next_conn.socket))
+                            logger.info(f"Finished shutdown of socket {next_conn.socket}")
                         else:
                             remaining_sockets.append(next_conn)
                     except IndexError:
@@ -1128,7 +1125,7 @@ class GatewayClient(object):
                 for conn in remaining_sockets:
                     self.deque.append(conn)
 
-                logger.info("Shutting down the current connection {0}".format(connection))
+                logger.info(f"Shutting down the current connection {connection}")
                 # The ports are reversed for JVM side of the connection.
                 connection.shutdown_socket(local_addr[1], remote_addr[1])
 
@@ -1207,16 +1204,13 @@ class GatewayConnection(object):
             raise
         except Exception as e:
             msg = "An error occurred while trying to connect to the Java "\
-                "server ({0}:{1})".format(self.address, self.port)
+                f"server ({self.address}:{self.port})"
             logger.exception(msg)
-            raise Py4JNetworkError(msg, e)
+            raise Py4JNetworkError(msg, e) from e
 
     def _authenticate_connection(self):
         if self.gateway_parameters.auth_token:
-            cmd = "{0}\n{1}\n".format(
-                proto.AUTH_COMMAND_NAME,
-                self.gateway_parameters.auth_token
-            )
+            cmd = f"{proto.AUTH_COMMAND_NAME}\n{self.gateway_parameters.auth_token}\n"
             answer = self.send_command(cmd)
             error, _ = proto.is_error(answer)
             if error:
@@ -1271,7 +1265,7 @@ class GatewayConnection(object):
         :rtype: the `string` answer received from the JVM (The answer follows
          the Py4J protocol).
         """
-        logger.debug("Command to send: {0}".format(command))
+        logger.debug(f"Command to send: {command}")
         try:
             # Write will only fail if remote is closed for large payloads or
             # if it sent a RST packet (SO_LINGER)
@@ -1279,7 +1273,7 @@ class GatewayConnection(object):
         except Exception as e:
             logger.info("Error while sending.", exc_info=True)
             raise Py4JNetworkError(
-                "Error while sending", e, proto.ERROR_ON_SEND)
+                "Error while sending", e, proto.ERROR_ON_SEND) from e
 
         try:
             # Stream is opened in binary mode (socket.makefile("rb")),
@@ -1287,7 +1281,7 @@ class GatewayConnection(object):
             # than dispatch through smart_decode's isinstance check.
             # Every JavaGateway call hits this — the saving compounds.
             answer = self.stream.readline()[:-1].decode("utf-8")
-            logger.debug("Answer received: {0}".format(answer))
+            logger.debug(f"Answer received: {answer}")
             if answer.startswith(proto.RETURN_MESSAGE):
                 answer = answer[1:]
             # Happens when a the other end is dead. There might be an empty
@@ -1606,7 +1600,7 @@ class JavaClass(object):
                 answer, self._gateway_client, self._fqn, "_java_lang_class")
         else:
             raise Py4JError(
-                "{0} does not exist in the JVM".format(self._fqn))
+                f"{self._fqn} does not exist in the JVM")
 
     def __getattr__(self, name):
         if is_magic_member(name):
@@ -1633,7 +1627,7 @@ class JavaClass(object):
                     answer, self._gateway_client, self._fqn, name)
         else:
             raise Py4JError(
-                "{0}.{1} does not exist in the JVM".format(self._fqn, name))
+                f"{self._fqn}.{name} does not exist in the JVM")
 
     def _get_args(self, args):
         temp_args = []
@@ -1747,7 +1741,7 @@ class JavaPackage(object):
             return JavaClass(
                 answer[proto.CLASS_FQN_START:], self._gateway_client)
         else:
-            raise Py4JError("{0} does not exist in the JVM".format(new_fqn))
+            raise Py4JError(f"{new_fqn} does not exist in the JVM")
 
 
 class JVMView(object):
@@ -1807,7 +1801,7 @@ class JVMView(object):
         else:
             _, error_message = get_error_message(answer)
             message = compute_exception_message(
-                "{0} does not exist in the JVM".format(name), error_message)
+                f"{name} does not exist in the JVM", error_message)
             raise Py4JError(message)
 
 
@@ -2321,9 +2315,9 @@ class CallbackServer(object):
             self._listening_port = info[1]
         except Exception as e:
             msg = "An error occurred while trying to start the callback "\
-                  "server ({0}:{1})".format(self.address, self.port)
+                  f"server ({self.address}:{self.port})"
             logger.exception(msg)
-            raise Py4JNetworkError(msg, e)
+            raise Py4JNetworkError(msg, e) from e
 
         # Maybe thread needs to be cleanup up?
         self.thread = Thread(target=self.run)
@@ -2460,7 +2454,7 @@ class CallbackConnection(Thread):
     def __init__(
             self, pool, input, socket_instance, gateway_client,
             callback_server_parameters, callback_server):
-        super(CallbackConnection, self).__init__()
+        super().__init__()
         self.pool = pool
         self.input = input
         self.socket = socket_instance
@@ -2506,7 +2500,7 @@ class CallbackConnection(Thread):
                     self.socket.sendall(
                         proto.SUCCESS_RETURN_MESSAGE.encode("utf-8"))
                 else:
-                    logger.error("Unknown command {0}".format(command))
+                    logger.error(f"Unknown command {command}")
                     # We're sending something to prevent blokincg, but at this
                     # point, the protocol is broken.
                     self.socket.sendall(
