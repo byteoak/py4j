@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import gc
 from multiprocessing import Process
+import os
 import subprocess
 import threading
 import unittest
@@ -8,8 +9,9 @@ import unittest
 from py4j.clientserver import (
     ClientServer, JavaParameters, PythonParameters)
 from py4j.java_gateway import GatewayConnectionGuard, is_instance_of, \
-    GatewayParameters, DEFAULT_PORT, DEFAULT_PYTHON_PROXY_PORT
-from py4j.protocol import Py4JError, Py4JJavaError, smart_decode
+    GatewayParameters, JavaGateway, DEFAULT_PORT, DEFAULT_PYTHON_PROXY_PORT
+from py4j.protocol import (
+    Py4JError, Py4JJavaError, Py4JNetworkError, smart_decode)
 from py4j.tests.java_callback_test import IHelloImpl, IHelloFailingImpl
 from py4j.tests.java_gateway_test import (
     PY4J_JAVA_PATH, PY4J_JAVA_PATHS,
@@ -818,3 +820,56 @@ class AuthFailureTest(unittest.TestCase):
                 gw.shutdown()
             except Exception:
                 pass
+
+
+class JVMCrashRecoveryTest(unittest.TestCase):
+    """Killing the JVM mid-call must surface a clean exception and
+    leave the gateway in a state where further calls also fail cleanly
+    (rather than hanging or returning garbage)."""
+
+    def setUp(self):
+        jarpath = next(
+            (p for p in PY4J_JAVA_PATHS if os.path.exists(p)), None)
+        if jarpath is None:
+            self.skipTest("py4j-java build artifacts not found; run "
+                          "./gradlew classes testClasses first")
+        # JavaGateway.launch_gateway() exposes the Popen handle via
+        # gateway.java_process, letting us SIGKILL the actual JVM
+        # (not just a Python wrapper process).
+        self.gateway = JavaGateway.launch_gateway(
+            jarpath=jarpath,
+            classpath=PY4J_JAVA_PATH)
+        # Bound the post-kill recv so the test cannot hang on a
+        # dead-peer socket that never reaches EOF. Mutated after
+        # construction because JavaGateway.launch_gateway() does not
+        # accept a gateway_parameters argument; timeout is read at
+        # connection-creation time so this takes effect on all
+        # subsequent calls.
+        self.gateway.gateway_parameters.read_timeout = 5.0
+
+    def tearDown(self):
+        try:
+            self.gateway.java_process.kill()
+            self.gateway.java_process.wait(timeout=5)
+        except Exception:
+            pass
+        try:
+            self.gateway.shutdown()
+        except Exception:
+            pass
+
+    def test_kill_jvm_then_call_raises_cleanly(self):
+        # Make one call to confirm gateway is healthy.
+        self.gateway.jvm.java.lang.System.currentTimeMillis()
+
+        # Kill the JVM forcibly (SIGKILL — no graceful shutdown).
+        self.gateway.java_process.kill()
+        self.gateway.java_process.wait(timeout=5)
+
+        # Next call must raise a connection-class exception within
+        # the read_timeout bound. Tight exception list — Exception
+        # catch-all would mask a regression where the wrong type
+        # surfaces (e.g., AttributeError from a test bug).
+        with self.assertRaises((Py4JNetworkError, Py4JError,
+                                ConnectionError, OSError)):
+            self.gateway.jvm.java.lang.System.currentTimeMillis()
