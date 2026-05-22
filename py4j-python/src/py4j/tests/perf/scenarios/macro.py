@@ -478,30 +478,16 @@ class XD_FullColdStart(MacroScenario):
     iterations_per_round = 1
 
     def measure(self, gateway):
-        # Import inside measure() so the cost of import isn't paid
-        # repeatedly; jvm helpers are already imported by the fixture
-        # in any sane run.
-        from py4j.tests.perf.jvm import spawn_jvm, shutdown_jvm
-        process = spawn_jvm()
-        try:
-            # Brief sleep mirrors fresh_jvm's startup_sleep so we
-            # exercise the same path; without it on a fast machine the
-            # first connect attempt can race ahead of the listening
-            # socket.
-            import time
-            time.sleep(0.25)
-            gw = None
-            try:
-                gw = JavaGateway()
-                gw.jvm.java.lang.System.currentTimeMillis()
-            finally:
-                if gw is not None:
-                    try:
-                        gw.shutdown()
-                    except Exception:
-                        pass
-        finally:
-            shutdown_jvm(process, None)
+        # Delegate to fresh_jvm so JVM startup readiness is polled
+        # rather than blind-slept — CodSpeed CI runners are slower
+        # than a local laptop and the original 0.25 s sleep was
+        # racing the JVM's listening socket (causing
+        # ConnectionRefusedError under CI). fresh_jvm uses a retry
+        # loop matching the rest of the test suite's conventions and
+        # cleanly tears down the subprocess in __exit__.
+        from py4j.tests.perf.jvm import fresh_jvm
+        with fresh_jvm(readiness_retries=5) as gw:
+            gw.jvm.java.lang.System.currentTimeMillis()
 
 
 ALL_MACRO_CLASSES = [
