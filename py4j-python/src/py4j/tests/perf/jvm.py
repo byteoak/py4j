@@ -152,9 +152,29 @@ def shutdown_jvm(process, gateway=None, timeout=10):
 
 
 @contextmanager
-def fresh_jvm(heap="4g", startup_sleep=0.25, readiness_retries=1,
-              enable_callbacks=False):
+def fresh_jvm(heap="4g", startup_sleep=0.0, readiness_retries=300,
+              readiness_poll_s=0.05, enable_callbacks=False):
     """Spawn a JVM, build a gateway, yield it, then tear both down.
+
+    Readiness model: poll connect ``readiness_retries`` times waiting
+    ``readiness_poll_s`` between attempts. Total wait ceiling =
+    ``startup_sleep + readiness_retries * readiness_poll_s`` (default
+    15 s — enough headroom for any reasonable CI runner while keeping
+    the typical fast-host wait under ~100 ms).
+
+    Tight polling matters for XD (full cold start) on CodSpeed: the
+    previous default (0.25 s sleep + 1 retry × 2 s) made each XD
+    iteration cost ~2.7 s, leaving CodSpeed only ~1 sample per benchmark
+    budget — too few for variance / regression detection. With 50 ms
+    polling each XD round now finishes in ~600 ms, enough for 4-5
+    samples per budget. (issue #557)
+
+    Backwards compatibility: callers that previously relied on the
+    0.25 s startup_sleep can pass ``startup_sleep=0.25`` to restore
+    the old behavior. The JVM's listen socket uses ``SO_REUSEADDR``,
+    so the original "let the OS reuse the listen port" rationale for
+    the unconditional sleep no longer applies — bind() succeeds
+    immediately even over TIME_WAIT.
 
     :param enable_callbacks: if True, start a CallbackServer alongside
         the gateway so Java can invoke Python proxies (needed for X4).
@@ -164,17 +184,17 @@ def fresh_jvm(heap="4g", startup_sleep=0.25, readiness_retries=1,
             gateway.jvm.java.lang.System.currentTimeMillis()
     """
     process = spawn_jvm(heap=heap)
-    # Brief sleep lets the OS reuse the listen port; mirrors the 250ms
-    # default used across the existing test suite.
-    time.sleep(startup_sleep)
+    if startup_sleep > 0:
+        time.sleep(startup_sleep)
     try:
-        check_connection(retries=readiness_retries)
+        check_connection(retries=readiness_retries,
+                         retry_sleep=readiness_poll_s)
     except Py4JNetworkError:
         shutdown_jvm(process, None)
         raise JvmStartupError(
             "JVM spawned but did not accept connections within "
-            "{0}s. Is port 25333 already in use?".format(
-                startup_sleep + 2.0 * readiness_retries))
+            "{0:.1f}s. Is port 25333 already in use?".format(
+                startup_sleep + readiness_poll_s * readiness_retries))
     if enable_callbacks:
         gateway = JavaGateway(
             callback_server_parameters=CallbackServerParameters())
