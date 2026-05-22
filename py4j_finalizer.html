@@ -164,7 +164,7 @@ weak reference to itself.</p>
 operation.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="py4j.finalizer.ThreadSafeFinalizer.add_finalizer">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">add_finalizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weak_ref</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#py4j.finalizer.ThreadSafeFinalizer.add_finalizer" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">add_finalizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weak_ref</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#py4j.finalizer.ThreadSafeFinalizer.add_finalizer" title="Permalink to this definition">¶</a></dt>
 <dd><p>Registers a finalizer with an id.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -178,7 +178,7 @@ operation.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="py4j.finalizer.ThreadSafeFinalizer.clear_finalizers">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">clear_finalizers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">clear_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#py4j.finalizer.ThreadSafeFinalizer.clear_finalizers" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">clear_finalizers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">clear_all</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#py4j.finalizer.ThreadSafeFinalizer.clear_finalizers" title="Permalink to this definition">¶</a></dt>
 <dd><p>Removes all registered finalizers.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -201,7 +201,7 @@ only the finalizers from an empty weak reference are deleted
 
 <dl class="py method">
 <dt class="sig sig-object py" id="py4j.finalizer.ThreadSafeFinalizer.remove_finalizer">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">remove_finalizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#py4j.finalizer.ThreadSafeFinalizer.remove_finalizer" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">remove_finalizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#py4j.finalizer.ThreadSafeFinalizer.remove_finalizer" title="Permalink to this definition">¶</a></dt>
 <dd><p>Removes a finalizer associated with this id.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
