@@ -1566,6 +1566,17 @@ class JavaClass(object):
         self._converters = self._gateway_client.converters
         self._gateway_doc = None
         self._statics = None
+        # Cache of resolved members keyed by attribute name. JVM-side
+        # answers for a given (class FQN, member name) are stable for
+        # the JVM's lifetime, so memoizing avoids repeated reflection
+        # round-trips on patterns like
+        # ``gateway.jvm.X.Y.System.currentTimeMillis()`` (issue #557).
+        # Only successful lookups are cached — misses keep raising so
+        # later imports (java_import / classpath changes) can still
+        # surface. Not thread-safe but matches the existing
+        # ``_statics`` / ``_dir_sequence_and_cache`` convention: worst
+        # case is double-fill with the same value under CPython's GIL.
+        self._members = {}
 
     @property
     def __doc__(self):
@@ -1613,6 +1624,10 @@ class JavaClass(object):
             # don't propagate any magic methods to Java
             raise AttributeError
 
+        cached = self._members.get(name)
+        if cached is not None:
+            return cached
+
         command = proto.REFLECTION_COMMAND_NAME +\
             proto.REFL_GET_MEMBER_SUB_COMMAND_NAME +\
             self._fqn + "\n" +\
@@ -1622,15 +1637,22 @@ class JavaClass(object):
 
         if len(answer) > 1 and answer[0] == proto.SUCCESS:
             if answer[1] == proto.METHOD_TYPE:
-                return JavaMember(
+                result = JavaMember(
                     name, None, proto.STATIC_PREFIX + self._fqn,
                     self._gateway_client)
             elif answer[1].startswith(proto.CLASS_TYPE):
-                return JavaClass(
+                result = JavaClass(
                     self._fqn + "$" + name, self._gateway_client)
             else:
+                # Direct return values (constants, etc.) are NOT cached
+                # — the answer string is decoded into a fresh Python
+                # value here, and there's no contract that the JVM-side
+                # value can't change across calls (static non-final
+                # fields exist).
                 return get_return_value(
                     answer, self._gateway_client, self._fqn, name)
+            self._members[name] = result
+            return result
         else:
             raise Py4JError(
                 "{0}.{1} does not exist in the JVM".format(self._fqn, name))
@@ -1719,6 +1741,11 @@ class JavaPackage(object):
         if jvm_id is None:
             self._jvm_id = proto.DEFAULT_JVM_ID
         self._jvm_id = jvm_id
+        # Memoize resolved children. See JavaClass._members for the
+        # rationale (issue #557 — collapses repeat FQN walks like
+        # ``gateway.jvm.java.lang.System`` from 3 RTTs to 0 after the
+        # first walk).
+        self._attr_cache = {}
 
     def __dir__(self):
         return [UserHelpAutoCompletion.KEY]
@@ -1734,6 +1761,10 @@ class JavaPackage(object):
             # don't propagate any magic methods to Java
             raise AttributeError
 
+        cached = self._attr_cache.get(name)
+        if cached is not None:
+            return cached
+
         new_fqn = self._fqn + "." + name
         command = proto.REFLECTION_COMMAND_NAME +\
             proto.REFL_GET_UNKNOWN_SUB_COMMAND_NAME +\
@@ -1742,12 +1773,14 @@ class JavaPackage(object):
             proto.END_COMMAND_PART
         answer = self._gateway_client.send_command(command)
         if answer == proto.SUCCESS_PACKAGE:
-            return JavaPackage(new_fqn, self._gateway_client, self._jvm_id)
+            result = JavaPackage(new_fqn, self._gateway_client, self._jvm_id)
         elif answer.startswith(proto.SUCCESS_CLASS):
-            return JavaClass(
+            result = JavaClass(
                 answer[proto.CLASS_FQN_START:], self._gateway_client)
         else:
             raise Py4JError("{0} does not exist in the JVM".format(new_fqn))
+        self._attr_cache[name] = result
+        return result
 
 
 class JVMView(object):
@@ -1772,6 +1805,11 @@ class JVMView(object):
             self._jvm_object = jvm_object
 
         self._dir_sequence_and_cache = (None, [])
+        # Memoize resolved top-level names. See JavaClass._members /
+        # JavaPackage._attr_cache for the rationale (issue #557 — the
+        # ``.java`` in ``gateway.jvm.java.lang.System`` is now a free
+        # lookup after first walk instead of a reflection RTT).
+        self._attr_cache = {}
 
     def __dir__(self):
         command = proto.DIR_COMMAND_NAME +\
@@ -1793,22 +1831,30 @@ class JVMView(object):
 
     def __getattr__(self, name):
         if name == UserHelpAutoCompletion.KEY:
+            # Returns a fresh UserHelpAutoCompletion instance per
+            # access by design (no per-instance state) — skip caching.
             return UserHelpAutoCompletion()
+
+        cached = self._attr_cache.get(name)
+        if cached is not None:
+            return cached
 
         answer = self._gateway_client.send_command(
             proto.REFLECTION_COMMAND_NAME +
             proto.REFL_GET_UNKNOWN_SUB_COMMAND_NAME + name + "\n" + self._id +
             "\n" + proto.END_COMMAND_PART)
         if answer == proto.SUCCESS_PACKAGE:
-            return JavaPackage(name, self._gateway_client, jvm_id=self._id)
+            result = JavaPackage(name, self._gateway_client, jvm_id=self._id)
         elif answer.startswith(proto.SUCCESS_CLASS):
-            return JavaClass(
+            result = JavaClass(
                 answer[proto.CLASS_FQN_START:], self._gateway_client)
         else:
             _, error_message = get_error_message(answer)
             message = compute_exception_message(
                 "{0} does not exist in the JVM".format(name), error_message)
             raise Py4JError(message)
+        self._attr_cache[name] = result
+        return result
 
 
 class GatewayProperty(object):
