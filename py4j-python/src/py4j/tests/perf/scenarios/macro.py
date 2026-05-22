@@ -478,15 +478,13 @@ class XD_FullColdStart(MacroScenario):
     iterations_per_round = 1
 
     def measure(self, gateway):
-        # Delegate to fresh_jvm so JVM startup readiness is polled
-        # rather than blind-slept — CodSpeed CI runners are slower
-        # than a local laptop and the original 0.25 s sleep was
-        # racing the JVM's listening socket (causing
-        # ConnectionRefusedError under CI). fresh_jvm uses a retry
-        # loop matching the rest of the test suite's conventions and
-        # cleanly tears down the subprocess in __exit__.
+        # Delegate to fresh_jvm. New defaults poll readiness every
+        # 50 ms with a 15 s ceiling — fast hosts finish in ~100 ms,
+        # CI in ~1-2 s. This lets CodSpeed fit multiple samples per
+        # benchmark budget instead of just one giant 2.7 s sample
+        # that hid C2's (and any other cold-start tweak's) impact.
         from py4j.tests.perf.jvm import fresh_jvm
-        with fresh_jvm(readiness_retries=5) as gw:
+        with fresh_jvm() as gw:
             gw.jvm.java.lang.System.currentTimeMillis()
 
 
