@@ -142,6 +142,12 @@ Aggregate throughput. Scenario IDs with variants reveal scaling curves.
 | X4 | `Collections.sort` on Python-`Comparable` proxies | Callback round-trip |
 | X5 | 1 000 × `ArrayList.get(-1)` → `Py4JJavaError` | Error-path latency |
 | X6 | 50 concurrent threads, 20 calls each | Pool saturation tail latency |
+| X7-1k / X7-16k / X7-256k | `ByteBuffer.array()` returning N bytes | Bytes recv (decode_bytearray) |
+| X8-1k / X8-16k / X8-256k | `BAOS.write(bytes, 0, N)` of N bytes | Bytes send (encode_bytearray) |
+| XA-3 | 1 000 walks of `gateway.jvm.java.lang.System` | Attribute-resolution cache canary (issue #557) |
+| XB | 50 fresh `JavaGateway()` against a running JVM | Per-connection setup cost (issue #557) |
+| XC | X1-1 workload with CallbackServer started, no callbacks invoked | Callback-infra overhead delta (issue #557) |
+| XD | `subprocess.Popen` → first call → shutdown, one cycle per round | Full cold start (issue #557 — CodSpeed only) |
 
 ## How to read the report
 
