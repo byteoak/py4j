@@ -879,6 +879,15 @@ public class GatewayServer extends DefaultGatewayServerListener implements Py4JJ
 	 *             If the port is busy.
 	 */
 	protected void startSocket() throws Py4JNetworkException {
+		// Kick off class-loading of GatewayConnection (and transitively
+		// the 14 command classes referenced in its static initializer)
+		// on a daemon thread in parallel with the bind. By the time the
+		// first client connects and we instantiate a GatewayConnection
+		// in the accept loop, those classes are already in the JVM's
+		// class cache instead of cold-loading on the first accept() —
+		// shaving tens to ~hundred ms off first-connect latency on
+		// cold filesystem-cache systems. issue #557.
+		warmupConnectionClasses();
 		try {
 			sSocket = sSocketFactory.createServerSocket();
 			sSocket.setSoTimeout(connectTimeout);
@@ -887,6 +896,37 @@ public class GatewayServer extends DefaultGatewayServerListener implements Py4JJ
 		} catch (IOException e) {
 			throw new Py4JNetworkException("Failed to bind to " + address + ":" + port, e);
 		}
+	}
+
+	/**
+	 * <p>
+	 * Best-effort daemon-thread pre-load of GatewayConnection so its
+	 * static initializer (which class-loads 14 command classes via
+	 * class literals — see {@code GatewayConnection.<clinit>}) runs in
+	 * parallel with the {@code bind()} on the main thread. Pure work
+	 * re-ordering — no behavior change.
+	 * </p>
+	 *
+	 * <p>
+	 * Errors are swallowed because this is purely a startup-time
+	 * optimization: if the warm-up thread can't load the class, the
+	 * main accept loop will still trigger the same class-load on the
+	 * first connection (just without the parallelism benefit).
+	 * </p>
+	 */
+	private static void warmupConnectionClasses() {
+		Thread t = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					Class.forName("py4j.GatewayConnection", true, GatewayServer.class.getClassLoader());
+				} catch (Throwable ignored) {
+					// Best-effort warm-up; see Javadoc.
+				}
+			}
+		}, "py4j-warmup");
+		t.setDaemon(true);
+		t.start();
 	}
 
 	/**
