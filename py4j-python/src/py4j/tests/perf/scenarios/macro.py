@@ -9,6 +9,7 @@ scaling curves: ``X1-1, X1-4, X1-16`` instead of a single ``X1``.
 
 import threading
 
+from py4j.java_gateway import JavaGateway
 from py4j.tests.perf.runner import MacroScenario
 
 
@@ -380,6 +381,113 @@ class X8_256k(_X8BytesSendBase):
     iterations_per_round = 25
 
 
+# ===================================================================== XA
+# Attribute walk depth: re-walks the gateway.jvm.java.lang.System
+# attribute chain many times. py4j's JVMView / JavaPackage / JavaClass
+# __getattr__ methods do NOT memoize their results today, so every
+# walk re-issues N reflection round-trips proportional to the chain
+# length (1 RTT per level past .jvm). X1-1 caches the bound method
+# once before its inner loop, hiding this cost — XA exposes it.
+#
+# A future attribute-memoization PR (issue #557 cold-start work)
+# should collapse repeat walks to 0 RTTs after the first; XA is the
+# canary for that win.
+class _XAAttributeWalkBase(MacroScenario):
+    """Walk an FQN chain on `gateway.jvm` repeatedly without caching."""
+    chain = ("java", "lang", "System")
+    iterations_per_round = 1_000
+
+    def measure(self, gateway):
+        jvm = gateway.jvm
+        a, b, c = self.chain
+        for _ in range(self.iterations_per_round):
+            # Resolve the full chain; no terminal call, so we measure
+            # only the attribute-resolution path (no actual JVM method
+            # invocation).
+            getattr(getattr(getattr(jvm, a), b), c)
+
+
+class XA_AttributeWalk3(_XAAttributeWalkBase):
+    id = "XA-3"
+    name = "attribute_walk_jvm_java_lang_System"
+    # Three-level walk: jvm.java.lang.System -> 3 reflection RTTs per
+    # iteration on master; should collapse to ~0 after caching lands.
+    chain = ("java", "lang", "System")
+    iterations_per_round = 1_000
+
+
+# ===================================================================== XB
+# Gateway reconnect: open a fresh JavaGateway against the *already-
+# running* JVM, make one call, close. Measures the per-connection
+# setup cost on both sides — Java accept() loop allocates 14 command
+# class instances per connection (GatewayConnection.java:196-208),
+# Python side runs _create_connection + socket setup + optional auth.
+# This is the lever for the Java-side command-prototype-cache PR.
+class XB_GatewayReconnect(MacroScenario):
+    id = "XB"
+    name = "gateway_reconnect_against_running_jvm"
+    # One round = 50 reconnect cycles. Empirically ~10-20 ms per cycle
+    # on M-series + JDK 21, so each timed round is ~0.5-1.0 s — well
+    # past scheduler jitter.
+    iterations_per_round = 50
+
+    def measure(self, gateway):
+        # Use the running JVM's port. We're a separate client; the
+        # fixture's gateway stays connected throughout.
+        from py4j.java_gateway import GatewayParameters
+        port = gateway.gateway_parameters.port
+        for _ in range(self.iterations_per_round):
+            gw = JavaGateway(
+                gateway_parameters=GatewayParameters(port=port))
+            try:
+                gw.jvm.java.lang.System.currentTimeMillis()
+            finally:
+                gw.close()
+
+
+# ===================================================================== XC
+# Callback infrastructure overhead: same workload as X1-1 (10k
+# currentTimeMillis() calls, single thread) but with the CallbackServer
+# started. NO callbacks are actually invoked — the delta vs X1-1 is
+# the steady-state cost of running the callback server alongside the
+# main gateway. Target of the lazy-CallbackClient PR.
+class XC_CallbackInfraOverheadUnused(MacroScenario):
+    id = "XC"
+    name = "callback_infra_overhead_unused"
+    enable_callbacks = True
+    iterations_per_round = 10_000
+
+    def measure(self, gateway):
+        fn = gateway.jvm.java.lang.System.currentTimeMillis
+        for _ in range(self.iterations_per_round):
+            fn()
+
+
+# ===================================================================== XD
+# Full cold start: spawn a fresh JVM subprocess, build a JavaGateway,
+# make one call, shut everything down. One measure() = one cold start.
+# Unlike the other scenarios, XD owns its JVM lifecycle inside
+# measure() and ignores the fixture-provided gateway (which exists
+# only to confirm the classpath builds and skip the test cleanly if
+# Java isn't available). Slow per-iteration (~300 ms on M-series +
+# JDK 21, ~1-3 s on slower hosts), so CodSpeed will only do a handful
+# of rounds. Targets of the AppCDS / TieredStopAtLevel=1 / CRaC work.
+class XD_FullColdStart(MacroScenario):
+    id = "XD"
+    name = "full_cold_start_subprocess_first_call"
+    iterations_per_round = 1
+
+    def measure(self, gateway):
+        # Delegate to fresh_jvm. New defaults poll readiness every
+        # 50 ms with a 15 s ceiling — fast hosts finish in ~100 ms,
+        # CI in ~1-2 s. This lets CodSpeed fit multiple samples per
+        # benchmark budget instead of just one giant 2.7 s sample
+        # that hid C2's (and any other cold-start tweak's) impact.
+        from py4j.tests.perf.jvm import fresh_jvm
+        with fresh_jvm() as gw:
+            gw.jvm.java.lang.System.currentTimeMillis()
+
+
 ALL_MACRO_CLASSES = [
     X1_1Thread, X1_4Thread, X1_16Thread,
     X2_1k, X2_10k, X2_100k,
@@ -389,4 +497,13 @@ ALL_MACRO_CLASSES = [
     X6_PoolSaturation,
     X7_1k, X7_16k, X7_256k,
     X8_1k, X8_16k, X8_256k,
+    XA_AttributeWalk3,
+    XB_GatewayReconnect,
+    XC_CallbackInfraOverheadUnused,
+    # XD_FullColdStart is intentionally omitted: it spawns its own
+    # JVM subprocess inside measure(), so it cannot share the
+    # fresh_jvm()-managed gateway the framework runner provides
+    # (port-bind collision on 25333). XD is registered only on the
+    # CodSpeed path via codspeed_macros._COLD_START_SCENARIOS, where
+    # it runs against test_cold_start_scenario (no shared fixture).
 ]
