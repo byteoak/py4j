@@ -11,7 +11,7 @@ Created on Dec 3, 2009
 """
 from __future__ import annotations
 
-from collections import deque
+from collections import deque, OrderedDict
 import logging
 import os
 from pydoc import pager
@@ -678,6 +678,97 @@ def is_magic_member(name):
     """Returns True if the name starts and ends with __
     """
     return name.startswith("__") and name.endswith("__")
+
+
+# Default per-instance cap for the attribute-resolution caches on
+# JVMView / JavaPackage / JavaClass. 1 024 is generous for any
+# realistic workload (PySpark and ad-hoc scripts typically touch
+# 50-200 unique class/package names per session) while still capping
+# pathological cases — e.g. ``for name in many_classes:
+# gateway.jvm[name]`` style iteration over thousands of names.
+_DEFAULT_ATTR_CACHE_MAXSIZE = 1024
+
+
+class _BoundedAttrCache(object):
+    """LRU-bounded cache for attribute-resolution results on
+    ``JVMView`` / ``JavaPackage`` / ``JavaClass``.
+
+    Mirrors the existing ``JavaObject._methods`` instance-dict cache
+    in shape (per-instance, lazily filled, only successful lookups
+    stored) but adds a size cap so that touching very many distinct
+    names on a single ``JVMView`` or ``JavaPackage`` cannot grow the
+    cache without bound. Default cap is generous enough that
+    real-world workloads never evict; the cap exists only to guard
+    against pathological iteration patterns.
+
+    **GC safety — what this cache stores, and what it must not.**
+    Only types with **no JVM-side finalization** are stored:
+    ``JavaClass``, ``JavaPackage``, and static-member ``JavaMember``.
+    None of these register a ``ThreadSafeFinalizer`` weakref or hold
+    a JVM-allocated ``target_id``; their ``target_id``s are either
+    absent or synthetic strings (``STATIC_PREFIX + fqn``). Caching
+    them therefore cannot extend the lifetime of any JVM-side
+    resource. ``JavaObject`` instances — the only py4j type that
+    *does* register a finalizer (``java_gateway.py``: ``JavaObject.
+    __init__`` -> ``ThreadSafeFinalizer.add_finalizer``) and that
+    triggers ``_garbage_collect_object`` on Python-side reclamation
+    — are **never** stored here. The one ``__getattr__`` branch that
+    could return a ``JavaObject`` (static field constants on
+    ``JavaClass.__getattr__``'s ``else`` arm) deliberately bypasses
+    this cache. This is the contract that keeps PySpark ML's
+    ``JavaWrapper.__del__`` -> ``gateway.detach(self._java_obj)``
+    machinery unaffected (SPARK-18274 / SPARK-50959 / SPARK-51880
+    scenarios all unaffected).
+
+    Thread safety: individual ``OrderedDict`` operations are atomic
+    under CPython's GIL, but the ``get`` / ``put`` methods here
+    chain two ops (lookup + ``move_to_end``, or insert +
+    ``popitem``) and a concurrent eviction in between can leave the
+    second op operating on a key that no longer exists. Those races
+    are caught with ``try/except KeyError`` — they are benign:
+    ``get`` already has the correct value in hand (only the LRU
+    promotion is lost), and ``put`` already inserted (only the
+    eviction step is lost, recovered on the next ``put``).
+    """
+    __slots__ = ("_cache", "_maxsize")
+
+    def __init__(self, maxsize=_DEFAULT_ATTR_CACHE_MAXSIZE):
+        self._cache = OrderedDict()
+        self._maxsize = maxsize
+
+    def get(self, name):
+        value = self._cache.get(name)
+        if value is not None:
+            try:
+                self._cache.move_to_end(name)
+            except KeyError:
+                # Concurrent put() evicted ``name`` between the lookup
+                # above and here. We still have the correct value;
+                # losing the LRU promotion is harmless. Logged at
+                # warning so the race is observable in diagnostics
+                # without raising.
+                logger.warning(
+                    "_BoundedAttrCache: concurrent eviction raced "
+                    "LRU promotion for key %r; cached value is "
+                    "still valid", name)
+        return value
+
+    def put(self, name, value):
+        self._cache[name] = value
+        try:
+            self._cache.move_to_end(name)
+            if len(self._cache) > self._maxsize:
+                self._cache.popitem(last=False)
+        except KeyError:
+            # Concurrent eviction emptied the cache between our
+            # insert and the ``popitem`` (or removed our key under
+            # us). The insert succeeded; the next ``put`` will
+            # re-evaluate the size. Logged at warning so the race is
+            # observable in diagnostics without raising.
+            logger.warning(
+                "_BoundedAttrCache: concurrent eviction raced LRU "
+                "bookkeeping for key %r; cache may briefly exceed "
+                "maxsize, recovered on next put()", name)
 
 
 def _garbage_collect_object(gateway_client, target_id):
@@ -1581,6 +1672,27 @@ class JavaClass(object):
        Usually, `JavaClass` are not initialized using their constructor, but
        they are created while accessing the `jvm` property of a gateway, e.g.,
        `gateway.jvm.java.lang.String`.
+
+       .. note::
+          Resolved members are memoized in a bounded LRU cache (default 1024
+          entries per instance). Repeated accesses to the same name typically
+          return the *same* ``JavaMember`` / ``JavaClass`` instance — code
+          comparing by identity (``a is b``) may observe a behavior change
+          from versions before this caching landed. Once the cache evicts an
+          entry, a subsequent access fetches a fresh instance again.
+
+          The cache holds **only** ``JavaMember`` and ``JavaClass`` results
+          (which carry no JVM-side finalizable resource). Static-field
+          constants returned via this ``__getattr__`` path are *not* cached
+          — they could be ``JavaObject`` instances whose finalizers manage
+          JVM-side bindings.
+
+          ``java_import`` interaction: re-importing a different fully
+          qualified name under the same simple name into the same
+          ``JVMView`` does not invalidate prior cache entries on
+          ``JavaClass``/``JavaPackage`` instances. If you rely on
+          ``java_import`` overlap-then-rebind semantics, use a fresh
+          ``new_jvm_view`` rather than the default.
     """
     def __init__(self, fqn, gateway_client):
         self._fqn = fqn
@@ -1597,10 +1709,9 @@ class JavaClass(object):
         # ``gateway.jvm.X.Y.System.currentTimeMillis()`` (issue #557).
         # Only successful lookups are cached — misses keep raising so
         # later imports (java_import / classpath changes) can still
-        # surface. Not thread-safe but matches the existing
-        # ``_statics`` / ``_dir_sequence_and_cache`` convention: worst
-        # case is double-fill with the same value under CPython's GIL.
-        self._members = {}
+        # surface. See ``_BoundedAttrCache`` for the LRU bound and
+        # the thread-safety contract.
+        self._members = _BoundedAttrCache()
 
     @property
     def __doc__(self):
@@ -1675,7 +1786,7 @@ class JavaClass(object):
                 # fields exist).
                 return get_return_value(
                     answer, self._gateway_client, self._fqn, name)
-            self._members[name] = result
+            self._members.put(name, result)
             return result
         else:
             raise Py4JError(
@@ -1758,6 +1869,12 @@ class JavaPackage(object):
        Usually, `JavaPackage` are not initialized using their constructor, but
        they are created while accessing the `jvm` property of a gateway, e.g.,
        `gateway.jvm.java.lang`.
+
+       .. note::
+          Resolved children are memoized in a bounded LRU cache; see
+          ``JavaClass`` docstring for the identity-stability behavior, the
+          GC-safety contract (only non-finalizable types are cached), and
+          the ``java_import`` overlap caveat.
     """
     def __init__(self, fqn, gateway_client, jvm_id=None):
         self._fqn = fqn
@@ -1769,7 +1886,7 @@ class JavaPackage(object):
         # rationale (issue #557 — collapses repeat FQN walks like
         # ``gateway.jvm.java.lang.System`` from 3 RTTs to 0 after the
         # first walk).
-        self._attr_cache = {}
+        self._attr_cache = _BoundedAttrCache()
 
     def __dir__(self):
         return [UserHelpAutoCompletion.KEY]
@@ -1803,7 +1920,7 @@ class JavaPackage(object):
                 answer[proto.CLASS_FQN_START:], self._gateway_client)
         else:
             raise Py4JError("{0} does not exist in the JVM".format(new_fqn))
-        self._attr_cache[name] = result
+        self._attr_cache.put(name, result)
         return result
 
 
@@ -1813,6 +1930,11 @@ class JVMView(object):
 
        This can be used to reference static members (fields and methods) and
        to call constructors.
+
+       .. note::
+          Resolved top-level names are memoized in a bounded LRU cache;
+          see ``JavaClass`` docstring for the identity-stability behavior,
+          the GC-safety contract, and the ``java_import`` overlap caveat.
     """
 
     def __init__(self, gateway_client, jvm_name, id=None, jvm_object=None):
@@ -1833,7 +1955,7 @@ class JVMView(object):
         # JavaPackage._attr_cache for the rationale (issue #557 — the
         # ``.java`` in ``gateway.jvm.java.lang.System`` is now a free
         # lookup after first walk instead of a reflection RTT).
-        self._attr_cache = {}
+        self._attr_cache = _BoundedAttrCache()
 
     def __dir__(self):
         command = proto.DIR_COMMAND_NAME +\
@@ -1877,7 +1999,7 @@ class JVMView(object):
             message = compute_exception_message(
                 "{0} does not exist in the JVM".format(name), error_message)
             raise Py4JError(message)
-        self._attr_cache[name] = result
+        self._attr_cache.put(name, result)
         return result
 
 
@@ -2144,15 +2266,45 @@ class JavaGateway(object):
             occurs while shutting down (very likely with sockets).
         """
         try:
-            self._gateway_client.shutdown_gateway()
-        except Exception:
-            if raise_exception:
-                raise
-            else:
-                logger.info(
-                    "Exception while shutting down callback server",
+            try:
+                self._gateway_client.shutdown_gateway()
+            except Exception:
+                if raise_exception:
+                    raise
+                else:
+                    logger.warning(
+                        "Exception while shutting down callback server",
+                        exc_info=True)
+            self.shutdown_callback_server()
+        finally:
+            # Defensive: drop the attribute-resolution cache on the
+            # default ``JVMView`` so cached ``JavaClass`` /
+            # ``JavaPackage`` references no longer pin
+            # ``_gateway_client`` past shutdown. Runs in ``finally``
+            # so the cleanup happens even on the
+            # ``raise_exception=True`` path. Secondary ``JVMView``
+            # instances created via ``new_jvm_view()`` are caller-
+            # managed — they die with the caller's reference and
+            # their cache is reclaimed naturally. (Existing in-file
+            # caches such as ``JavaObject._methods``,
+            # ``JavaClass._statics``, ``JVMView._dir_sequence_and_cache``
+            # likewise rely on their parent's lifecycle.)
+            try:
+                jvm = getattr(self, "jvm", None)
+                if jvm is not None:
+                    attr_cache = getattr(jvm, "_attr_cache", None)
+                    if attr_cache is not None:
+                        attr_cache._cache.clear()
+            except Exception:
+                # Best-effort — never surface a cleanup exception
+                # from shutdown; the gateway is already torn down at
+                # this point. Logged at warning so the failure is
+                # observable in diagnostics without breaking
+                # shutdown.
+                logger.warning(
+                    "Exception while clearing JVMView attribute "
+                    "cache during shutdown",
                     exc_info=True)
-        self.shutdown_callback_server()
 
     def shutdown_callback_server(self, raise_exception=False):
         """Shuts down the

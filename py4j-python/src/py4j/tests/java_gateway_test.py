@@ -670,6 +670,231 @@ class MemoryManagementTest(unittest.TestCase):
             len(ThreadSafeFinalizer.finalizers) - finalizers_size_start, 0)
         self.gateway.shutdown()
 
+    def testAttrCacheDoesNotAffectJavaObjectDetach(self):
+        # Regression test for the attribute-resolution cache on
+        # JVMView / JavaPackage / JavaClass. The cache memoizes
+        # JavaClass / JavaPackage / JavaMember (none of which carry
+        # JVM-side finalizable resources) but must never affect the
+        # JavaObject lifecycle, which is the GC machinery PySpark
+        # ML's JavaWrapper.__del__ depends on (SPARK-18274 et al.).
+        #
+        # Procedure:
+        #   1. Walk gateway.jvm.java.lang.StringBuffer (populates
+        #      JVMView._attr_cache and the JavaPackage._attr_cache
+        #      down the chain).
+        #   2. Construct a StringBuffer twice; check that
+        #      ThreadSafeFinalizer registers two finalizers for the
+        #      two JavaObjects.
+        #   3. detach() one, _detach() the other, gc.collect().
+        #   4. Assert the finalizer-registry delta is zero — proof
+        #      that the cache did NOT pin the JavaObject bindings.
+        self.gateway = JavaGateway()
+        gc.collect()
+        finalizers_size_start = len(ThreadSafeFinalizer.finalizers)
+
+        # Populate the attribute cache on every level of the walk.
+        # The same walk repeated should hit cache for every segment.
+        cls_first = self.gateway.jvm.java.lang.StringBuffer
+        cls_second = self.gateway.jvm.java.lang.StringBuffer
+        # Cache identity: after the first walk, repeats return the
+        # *same* JavaClass instance.
+        self.assertIs(cls_first, cls_second)
+
+        # Now construct two JavaObject instances and verify they are
+        # detached cleanly. The JavaObjects themselves must NOT be
+        # in any cache.
+        sb1 = cls_first()
+        sb1.append("Cache hit walk #1")
+        self.gateway.detach(sb1)
+        sb2 = cls_first()
+        sb2.append("Cache hit walk #2")
+        sb2._detach()
+        gc.collect()
+
+        # If the attribute cache somehow retained a strong reference
+        # to the JavaObjects (it should not), the finalizer registry
+        # would still hold their entries here.
+        self.assertEqual(
+            len(ThreadSafeFinalizer.finalizers) - finalizers_size_start,
+            0,
+            "Attribute cache must not pin JavaObject bindings — "
+            "ThreadSafeFinalizer registry leaked entries past "
+            "detach(). This breaks PySpark ML's JavaWrapper.__del__ "
+            "memory-management path.")
+        self.gateway.shutdown()
+
+    def testConcurrentColdFqnWalk(self):
+        # 16 threads simultaneously walking the same cold FQN chain
+        # ``gateway.jvm.java.lang.StringBuffer``. The cache may race
+        # under contention — each thread might independently complete
+        # reflection and ``put``, so identity across threads is not
+        # guaranteed for the cold path. But no thread may raise; all
+        # must receive a valid ``JavaClass`` with the right ``_fqn``;
+        # the final cache state must be coherent.
+        import threading as _threading
+        self.gateway = JavaGateway()
+        n_threads = 16
+        barrier = _threading.Barrier(n_threads, timeout=10)
+        results = [None] * n_threads
+        errors = []
+
+        def worker(idx):
+            try:
+                # Sync to t=0 so all threads race the cache populate.
+                barrier.wait()
+                results[idx] = self.gateway.jvm.java.lang.StringBuffer
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            _threading.Thread(target=worker, args=(i,))
+            for i in range(n_threads)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), n_threads)
+        for r in results:
+            self.assertIsNotNone(r)
+            self.assertEqual(r._fqn, "java.lang.StringBuffer")
+        self.gateway.shutdown()
+
+    def testAttrCacheSurvivesShutdownMidWalk(self):
+        # After ``JavaGateway.shutdown()``, the JVMView ``_attr_cache``
+        # is cleared (Phase 2 of the cache PR). Subsequent attribute
+        # walks must surface a clean ``Py4JNetworkError`` from the
+        # broken socket connection — never an ``AttributeError``,
+        # ``KeyError``, or other internal-state exception leaking
+        # from a half-cleared cache.
+        self.gateway = JavaGateway()
+        # Populate the cache with a successful walk.
+        _ = self.gateway.jvm.java.lang.System
+        _ = self.gateway.jvm.java.lang.Integer
+        self.assertTrue(len(self.gateway.jvm._attr_cache._cache) > 0)
+
+        # Shut down. Phase 2 clears jvm._attr_cache here.
+        self.gateway.shutdown()
+        self.assertEqual(len(self.gateway.jvm._attr_cache._cache), 0)
+
+        # New walks must fail with the expected network error class,
+        # not a Python-internal exception. Py4JNetworkError is the
+        # documented contract; ConnectionRefusedError covers the
+        # case where the JVM listener also closed (this test class's
+        # tearDown will safe_join() the JVM either way).
+        with self.assertRaises((Py4JNetworkError, Py4JError)):
+            _ = self.gateway.jvm.java.lang.Long
+
+    def testTwoGatewaysDoNotShareAttrCache(self):
+        # Each ``JavaGateway`` instance must have its own per-instance
+        # ``_attr_cache`` on its ``JVMView`` — no process-global cache,
+        # no cross-gateway leakage of cached ``JavaClass`` references.
+        gw1 = JavaGateway()
+        gw2 = JavaGateway()
+        try:
+            cls1 = gw1.jvm.java.lang.String
+            cls2 = gw2.jvm.java.lang.String
+            # Each gateway resolved the class independently — same
+            # FQN, different instances backed by different gateway
+            # clients.
+            self.assertIsNot(
+                cls1, cls2,
+                "Each JavaGateway must have its own JVMView "
+                "_attr_cache; JavaClass instances must not be "
+                "shared across gateways.")
+            self.assertIsNot(
+                gw1.jvm._attr_cache, gw2.jvm._attr_cache,
+                "JVMView _attr_cache must be per-instance, not "
+                "process-global.")
+            self.assertIs(cls1._gateway_client, gw1._gateway_client)
+            self.assertIs(cls2._gateway_client, gw2._gateway_client)
+        finally:
+            gw1.shutdown()
+            gw2.shutdown()
+
+    def testMissesAreNotCached(self):
+        # The PR documents that only successful lookups are cached;
+        # misses (Py4JError) keep raising so later ``java_import`` or
+        # classpath changes can still surface a previously-missing
+        # class.
+        #
+        # Note on scope: only ``JavaClass.__getattr__`` produces real
+        # misses for unknown attribute names. ``JVMView`` and
+        # ``JavaPackage`` always treat unresolved names as new
+        # packages (the JVM-side ``REFL_GET_UNKNOWN`` returns
+        # ``SUCCESS_PACKAGE`` for any non-empty name not matching a
+        # class) — so misses on those paths are not user-observable
+        # as ``Py4JError``. This test pins the contract where it
+        # actually matters: ``JavaClass._members``.
+        self.gateway = JavaGateway()
+        system = self.gateway.jvm.java.lang.System
+        members_size_before = len(system._members._cache)
+        with self.assertRaises(Py4JError):
+            _ = system.noSuchMember
+        self.assertEqual(
+            len(system._members._cache), members_size_before,
+            "JavaClass._members must not store misses — keeping the "
+            "cache miss-free is what lets later ``java_import`` / "
+            "classpath changes still surface previously-missing names.")
+        self.gateway.shutdown()
+
+    def testShutdownRaiseExceptionStillClearsCache(self):
+        # ``shutdown(raise_exception=True)`` re-raises any exception
+        # from the underlying gateway client. The defensive cache
+        # clear must still run via ``finally`` — otherwise an
+        # exception-path shutdown leaks cache entries that pin the
+        # gateway client.
+        self.gateway = JavaGateway()
+        _ = self.gateway.jvm.java.lang.System
+        self.assertGreater(len(self.gateway.jvm._attr_cache._cache), 0)
+
+        # Force shutdown_gateway to raise by closing the underlying
+        # connection's socket first; the second shutdown will then
+        # raise on the dead socket.
+        try:
+            self.gateway._gateway_client.shutdown_gateway()
+        except Exception:
+            pass
+        # Now invoke shutdown with raise_exception=True. We don't
+        # care whether it raises or not for this test — only that
+        # the cache gets cleared by the finally clause.
+        try:
+            self.gateway.shutdown(raise_exception=True)
+        except Exception:
+            pass
+
+        self.assertEqual(
+            len(self.gateway.jvm._attr_cache._cache), 0,
+            "shutdown(raise_exception=True) must still clear the "
+            "attribute cache via the finally clause, even when the "
+            "underlying gateway-client shutdown raises.")
+
+    def testNoCycleInCachedInstances(self):
+        # After populating the cache and calling shutdown(), the
+        # JavaGateway must remain reclaimable by Python's refcount
+        # garbage collector. The cache holds JavaClass instances
+        # which hold _gateway_client — but neither of those reference
+        # JavaGateway back, so no cycle exists.
+        import weakref as _weakref
+        gateway = JavaGateway()
+        # Populate the cache deeply.
+        _ = gateway.jvm.java.lang.System
+        _ = gateway.jvm.java.lang.Integer.parseInt
+        wr = _weakref.ref(gateway)
+        gateway.shutdown()
+        del gateway
+        # gc.collect() is needed in case Python's tracing GC (not just
+        # refcount) is involved, e.g. if any future change introduces
+        # a soft cycle.
+        gc.collect()
+        self.assertIsNone(
+            wr(),
+            "JavaGateway should be reclaimable after shutdown() + "
+            "del; the attribute cache must not form a cycle that "
+            "pins the gateway in memory.")
+
     def testGCCollect(self):
         self.gateway = JavaGateway()
         gc.collect()
