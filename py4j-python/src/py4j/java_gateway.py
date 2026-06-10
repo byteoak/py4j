@@ -2272,7 +2272,7 @@ class JavaGateway(object):
                 if raise_exception:
                     raise
                 else:
-                    logger.warning(
+                    logger.info(
                         "Exception while shutting down callback server",
                         exc_info=True)
             self.shutdown_callback_server()
@@ -2298,10 +2298,15 @@ class JavaGateway(object):
             except Exception:
                 # Best-effort — never surface a cleanup exception
                 # from shutdown; the gateway is already torn down at
-                # this point. Logged at warning so the failure is
-                # observable in diagnostics without breaking
-                # shutdown.
-                logger.warning(
+                # this point. Logged at debug (not warning) because
+                # ``logger.warning(..., exc_info=True)`` would have
+                # the captured traceback retain ``self`` (the
+                # JavaGateway) and its object graph through pytest's
+                # caplog — breaks memory-leak tests that count
+                # finalized objects. Debug level is below caplog's
+                # default capture, so the LogRecord is discarded
+                # and references are released.
+                logger.debug(
                     "Exception while clearing JVMView attribute "
                     "cache during shutdown",
                     exc_info=True)
