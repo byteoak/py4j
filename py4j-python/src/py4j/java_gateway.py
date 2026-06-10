@@ -2268,13 +2268,35 @@ class JavaGateway(object):
         try:
             try:
                 self._gateway_client.shutdown_gateway()
-            except Exception:
+            except Exception as e:
                 if raise_exception:
                     raise
                 else:
-                    logger.info(
-                        "Exception while shutting down callback server",
-                        exc_info=True)
+                    # Log at WARNING for diagnostic visibility, but pin
+                    # NO references through the LogRecord. Two pitfalls:
+                    #
+                    # 1. ``logger.warning(..., exc_info=True)`` retains
+                    #    the traceback explicitly via ``LogRecord.exc_info``.
+                    # 2. Passing the exception INSTANCE ``e`` as a format
+                    #    arg ALSO retains the traceback — Python 3
+                    #    exceptions carry ``__traceback__`` as an attribute,
+                    #    so ``LogRecord.args = (..., e)`` indirectly holds
+                    #    the frame chain.
+                    #
+                    # Either pitfall lets pytest's ``caplog`` (which
+                    # captures records at WARNING level by default) pin
+                    # ``self`` (``JavaGateway``) and its entire object
+                    # graph for the test's lifetime — breaking
+                    # finalization-counting tests
+                    # (``memory_leak_test::ClientServerTest``).
+                    #
+                    # The pre-formatted f-string defuses both: only a
+                    # plain string is passed to logger, and no args are
+                    # retained.
+                    logger.warning(
+                        "Exception while shutting down callback "
+                        "server: %s: %s",
+                        type(e).__name__, str(e))
             self.shutdown_callback_server()
         finally:
             # Defensive: drop the attribute-resolution cache on the
@@ -2295,21 +2317,19 @@ class JavaGateway(object):
                     attr_cache = getattr(jvm, "_attr_cache", None)
                     if attr_cache is not None:
                         attr_cache._cache.clear()
-            except Exception:
+            except Exception as e:
                 # Best-effort — never surface a cleanup exception
                 # from shutdown; the gateway is already torn down at
-                # this point. Logged at debug (not warning) because
-                # ``logger.warning(..., exc_info=True)`` would have
-                # the captured traceback retain ``self`` (the
-                # JavaGateway) and its object graph through pytest's
-                # caplog — breaks memory-leak tests that count
-                # finalized objects. Debug level is below caplog's
-                # default capture, so the LogRecord is discarded
-                # and references are released.
-                logger.debug(
+                # this point. Log at warning for diagnostic visibility
+                # but pre-evaluate ``str(e)`` (and avoid
+                # ``exc_info=True``) so the captured LogRecord does
+                # not retain the exception's ``__traceback__`` and the
+                # frame chain pinning ``self`` — see the rationale on
+                # the outer except above.
+                logger.warning(
                     "Exception while clearing JVMView attribute "
-                    "cache during shutdown",
-                    exc_info=True)
+                    "cache during shutdown: %s: %s",
+                    type(e).__name__, str(e))
 
     def shutdown_callback_server(self, raise_exception=False):
         """Shuts down the
