@@ -229,8 +229,15 @@ class JavaClient(GatewayClient):
         JavaObject on the Python side. If enqueue is True, sends the request
         to the FinalizerWorker deque. Otherwise, sends the request to the Java
         side.
+
+        When this ``JavaClient`` was constructed without a
+        ``finalizer_deque`` (which can happen on subclasses or in test
+        harnesses — see ``InstrJavaClient`` in ``tests/instrumented.py``),
+        there is no worker thread to drain the deque, so we fall back to
+        the synchronous super-class implementation regardless of
+        ``enqueue``.
         """
-        if enqueue:
+        if enqueue and self.finalizer_deque is not None:
             self.finalizer_deque.appendleft((self, target_id))
         else:
             super().garbage_collect_object(target_id)
@@ -250,7 +257,17 @@ class JavaClient(GatewayClient):
         try:
             super().shutdown_gateway()
         finally:
-            self.finalizer_deque.appendleft(SHUTDOWN_FINALIZER_WORKER)
+            # The SHUTDOWN sentinel only makes sense if there's a
+            # ``FinalizerWorker`` consuming from the deque (i.e. this
+            # ``JavaClient`` was wired by a full ``ClientServer``). When
+            # constructed without a ``finalizer_deque`` — e.g. by an
+            # ``InstrJavaClient`` test subclass that does not propagate
+            # the kwarg — there is no worker to signal and the
+            # post-shutdown ``appendleft`` would raise ``AttributeError``
+            # on the ``None`` deque. Guard the post-condition so the
+            # ``finally`` is safe regardless of construction path.
+            if self.finalizer_deque is not None:
+                self.finalizer_deque.appendleft(SHUTDOWN_FINALIZER_WORKER)
 
     def get_thread_connection(self):
         """Returns the ClientServerConnection associated with this thread. Can
