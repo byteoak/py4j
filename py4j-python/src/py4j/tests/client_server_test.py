@@ -212,6 +212,57 @@ class GarbageCollectionTest(unittest.TestCase):
             self.assertTrue(all(connections))
             client_server.shutdown()
 
+    def testAttrCacheInClientServerMode(self):
+        """Pinned-thread ``ClientServer`` mode also uses the JVMView /
+        JavaPackage / JavaClass attribute caches; multiple threads
+        walking the same FQN through their own pinned connections
+        must produce a coherent cache (same JavaClass reference once
+        the cache is populated) without raising.
+        """
+        with clientserver_example_app_process():
+            client_server = ClientServer(
+                JavaParameters(), PythonParameters())
+            try:
+                # First walk populates the cache.
+                cls_first = client_server.jvm.java.lang.String
+                # Repeated walks from the main thread hit the cache.
+                cls_again = client_server.jvm.java.lang.String
+                self.assertIs(
+                    cls_first, cls_again,
+                    "ClientServer mode: repeated walks of the same "
+                    "FQN must hit the JVMView _attr_cache and return "
+                    "the same JavaClass instance.")
+
+                # Multi-thread walk: all threads share the JVMView
+                # but each gets its own pinned connection. The cache
+                # itself is shared across threads.
+                results = [None] * 8
+                errors = []
+
+                def worker(idx):
+                    try:
+                        results[idx] = (
+                            client_server.jvm.java.lang.String)
+                    except Exception as e:
+                        errors.append(e)
+
+                threads = [
+                    threading.Thread(target=worker, args=(i,))
+                    for i in range(8)
+                ]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=10)
+
+                self.assertEqual(errors, [])
+                # All threads see the now-warm cache; identity
+                # stable.
+                for r in results:
+                    self.assertIs(r, cls_first)
+            finally:
+                client_server.shutdown()
+
 
 class RetryTest(unittest.TestCase):
 
