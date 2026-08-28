@@ -73,6 +73,9 @@ Support & Resources
 News
 ====
 
+* **TBD** - Py4J 0.11 has been released. See the
+  :doc:`changelog` for more details about the bug fixes and new features.
+
 * **January 15th 2024** - Py4J 0.10.9.9 has been released. See the
   :doc:`changelog` for more details about the bug fixes and new features.
 

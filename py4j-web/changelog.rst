@@ -81,7 +81,7 @@ backwards-incompatible changes are listed first.
   ``shutdown(boolean)`` is unchanged (``gracePeriodMs == 0`` = abrupt,
   back-compat). Before this fix, ``shutdown()`` immediately force-closed all
   active connections, silently dropping work in flight — a real-world
-  data-loss risk for callback-heavy workflows.
+  data-loss risk for callback-heavy workflows. (#582)
 
 - Build, CI & testing: Add a local-run performance-testing framework (#578) and
   CodSpeed continuous benchmarking, opt-in on pull requests via the
