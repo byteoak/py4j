@@ -129,19 +129,19 @@ receive signals.</p>
 <p>Here is a full usage example:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Declare a signal</span>
 <span class="n">server_connection_stopped</span> <span class="o">=</span> <span class="n">Signal</span><span class="p">()</span>
-<span class="sd">&quot;&quot;&quot;Signal sent when a Python (Callback) Server connection is stopped.</span>
+<span class="sd">"""Signal sent when a Python (Callback) Server connection is stopped.</span>
 
 <span class="sd">Will supply the ``connection`` argument, an instance of CallbackConnection.</span>
 
 <span class="sd">The sender is the CallbackServer instance.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="n">server</span> <span class="o">=</span> <span class="o">...</span>
 <span class="n">connection</span> <span class="o">=</span> <span class="o">...</span>
 
 <span class="c1"># Create a receiver</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">on_connection_stopped</span><span class="p">(</span><span class="n">sender</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-    <span class="n">connection</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;connection&quot;</span><span class="p">]</span>
+    <span class="n">connection</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>
     <span class="c1"># ...</span>
 
 <span class="c1"># Connect the receiver to the signal. Only signals sent from</span>
@@ -149,7 +149,7 @@ receive signals.</p>
 <span class="n">server_connection_stopped</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">on_connection_stopped</span><span class="p">,</span> <span class="n">sender</span><span class="o">=</span><span class="n">server</span><span class="p">)</span>
 
 <span class="c1"># Send a signal to the receivers. If one receiver raises an error,</span>
-<span class="c1"># the error is propagated back and other receivers won&#39;t receive the</span>
+<span class="c1"># the error is propagated back and other receivers won't receive the</span>
 <span class="c1"># signal.</span>
 <span class="n">server_connection_stopped</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">sender</span><span class="o">=</span><span class="n">server</span><span class="p">,</span> <span class="n">connection</span><span class="o">=</span><span class="n">connection</span><span class="p">)</span>
 </pre></div>

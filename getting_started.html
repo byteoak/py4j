@@ -186,7 +186,7 @@ program to access a pre-configured stack:</p>
 
 <span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="nf">StackEntryPoint</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="n">stack</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Stack</span><span class="p">();</span>
-<span class="w">      </span><span class="n">stack</span><span class="p">.</span><span class="na">push</span><span class="p">(</span><span class="s">&quot;Initial Item&quot;</span><span class="p">);</span>
+<span class="w">      </span><span class="n">stack</span><span class="p">.</span><span class="na">push</span><span class="p">(</span><span class="s">"Initial Item"</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="n">Stack</span><span class="w"> </span><span class="nf">getStack</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
@@ -196,7 +196,7 @@ program to access a pre-configured stack:</p>
 <span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">String</span><span class="o">[]</span><span class="w"> </span><span class="n">args</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="n">GatewayServer</span><span class="w"> </span><span class="n">gatewayServer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">GatewayServer</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">StackEntryPoint</span><span class="p">());</span>
 <span class="w">        </span><span class="n">gatewayServer</span><span class="p">.</span><span class="na">start</span><span class="p">();</span>
-<span class="w">        </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">&quot;Gateway Server Started&quot;</span><span class="p">);</span>
+<span class="w">        </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"Gateway Server Started"</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="p">}</span>
@@ -278,25 +278,25 @@ a good time to do so :-)</p>
 </pre></div>
 </div>
 <p>The stack variable now contains a stack. Try to push and pop a few elements:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="s2">&quot;First </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;item&#39;</span><span class="p">))</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="s2">&quot;Second item&quot;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="s2">"First </span><span class="si">%s</span><span class="s2">"</span> <span class="o">%</span> <span class="p">(</span><span class="s1">'item'</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="s2">"Second item"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
-<span class="go">u&#39;Second item&#39;</span>
+<span class="go">u'Second item'</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
-<span class="go">u&#39;First item&#39;</span>
+<span class="go">u'First item'</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
-<span class="go">u&#39;Initial Item&#39;</span>
+<span class="go">u'Initial Item'</span>
 </pre></div>
 </div>
 <p>Now the stack is supposed to be empty. Here is what happens if you try to pop
 it again.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
 <span class="gt">Traceback (most recent call last):</span>
-  File <span class="nb">&quot;&lt;stdin&gt;&quot;</span>, line <span class="m">1</span>, in <span class="n">&lt;module&gt;</span>
-  File <span class="nb">&quot;py4j/java_gateway.py&quot;</span>, line <span class="m">346</span>, in <span class="n">__call__</span>
+  File <span class="nb">"&lt;stdin&gt;"</span>, line <span class="m">1</span>, in <span class="n">&lt;module&gt;</span>
+  File <span class="nb">"py4j/java_gateway.py"</span>, line <span class="m">346</span>, in <span class="n">__call__</span>
 <span class="w">    </span><span class="n">return_value</span> <span class="o">=</span> <span class="n">get_return_value</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gateway_client</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-  File <span class="nb">&quot;py4j/java_gateway.py&quot;</span>, line <span class="m">228</span>, in <span class="n">get_return_value</span>
-<span class="w">    </span><span class="k">raise</span> <span class="n">Py4JJavaError</span><span class="p">(</span><span class="s1">&#39;An error occurred while calling </span><span class="si">%s%s%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">target_id</span><span class="p">,</span> <span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
+  File <span class="nb">"py4j/java_gateway.py"</span>, line <span class="m">228</span>, in <span class="n">get_return_value</span>
+<span class="w">    </span><span class="k">raise</span> <span class="n">Py4JJavaError</span><span class="p">(</span><span class="s1">'An error occurred while calling </span><span class="si">%s%s%s</span><span class="s1">'</span> <span class="o">%</span> <span class="p">(</span><span class="n">target_id</span><span class="p">,</span> <span class="s1">'.'</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
 <span class="gr">py4j.java_gateway.Py4JJavaError</span>: <span class="n">An error occurred while calling o0.pop.</span>
 <span class="x">java.lang.IndexOutOfBoundsException: Index: 0, Size: 0</span>
 <span class="x">    at java.util.LinkedList.entry(LinkedList.java:382)</span>
@@ -325,17 +325,17 @@ raised by Py4J.</p>
 <h2><span class="section-number">2.3. </span>Collections, Help, and Constructors<a class="headerlink" href="#collections-help-and-constructors" title="Permalink to this heading">¶</a></h2>
 <p>Now, you will experiment with lists. Add another element and get the internal
 list of the stack:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="s1">&#39;First item&#39;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="s1">'First item'</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">internal_list</span> <span class="o">=</span> <span class="n">stack</span><span class="o">.</span><span class="n">getInternalList</span><span class="p">()</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">internal_list</span><span class="p">)</span>
 <span class="go">1</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">internal_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<span class="go">u&#39;First item&#39;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">internal_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;Second item&#39;</span><span class="p">)</span>
+<span class="go">u'First item'</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">internal_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'Second item'</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">internal_list</span>
-<span class="go">[u&#39;First item&#39;, u&#39;Second item&#39;]</span>
+<span class="go">[u'First item', u'Second item']</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">getInternalList</span><span class="p">()</span>
-<span class="go">[u&#39;First item&#39;, u&#39;Second item&#39;]</span>
+<span class="go">[u'First item', u'Second item']</span>
 </pre></div>
 </div>
 <p>As you can see, lists created on the JVM act like Python lists: you can use the <code class="docutils literal notranslate"><span class="pre">[]</span></code> operator and the usual list
@@ -343,17 +343,17 @@ methods like <code class="docutils literal notranslate"><span class="pre">len</s
 Java side. Now try to slice the list:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sliced_list</span> <span class="o">=</span> <span class="n">internal_list</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">sliced_list</span>
-<span class="go">[u&#39;First item&#39;]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sliced_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;Third item&#39;</span><span class="p">)</span>
+<span class="go">[u'First item']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sliced_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'Third item'</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">sliced_list</span>
-<span class="go">[u&#39;First item&#39;, u&#39;Third item&#39;]</span>
+<span class="go">[u'First item', u'Third item']</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">internal_list</span>
-<span class="go">[u&#39;First item&#39;, u&#39;Second item&#39;]</span>
+<span class="go">[u'First item', u'Second item']</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">getInternalList</span><span class="p">()</span>
-<span class="go">[u&#39;First item&#39;, u&#39;Second item&#39;]</span>
+<span class="go">[u'First item', u'Second item']</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">pushAll</span><span class="p">(</span><span class="n">sliced_list</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">getInternalList</span><span class="p">()</span>
-<span class="go">[u&#39;Third item&#39;, u&#39;First item&#39;, u&#39;First item&#39;, u&#39;Second item&#39;]</span>
+<span class="go">[u'Third item', u'First item', u'First item', u'Second item']</span>
 </pre></div>
 </div>
 <p>Slices act like real Python slices: they are a copy of the original list, no
@@ -371,16 +371,16 @@ slice.</p>
 <p>In the previous example, you also tried to pass a list as a parameter of the
 pushAll method. See what happens if you try to pass a pure Python list that was
 not returned by the JVM:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">pushAll</span><span class="p">([</span><span class="s1">&#39;Fourth item&#39;</span><span class="p">])</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">pushAll</span><span class="p">([</span><span class="s1">'Fourth item'</span><span class="p">])</span>
 <span class="gt">Traceback (most recent call last):</span>
-  File <span class="nb">&quot;&lt;stdin&gt;&quot;</span>, line <span class="m">1</span>, in <span class="n">&lt;module&gt;</span>
-  File <span class="nb">&quot;py4j/java_gateway.py&quot;</span>, line <span class="m">158</span>, in <span class="n">__call__</span>
-<span class="w">    </span><span class="n">args_command</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">get_command_part</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">])</span>
-  File <span class="nb">&quot;py4j/java_gateway.py&quot;</span>, line <span class="m">68</span>, in <span class="n">get_command_part</span>
+  File <span class="nb">"&lt;stdin&gt;"</span>, line <span class="m">1</span>, in <span class="n">&lt;module&gt;</span>
+  File <span class="nb">"py4j/java_gateway.py"</span>, line <span class="m">158</span>, in <span class="n">__call__</span>
+<span class="w">    </span><span class="n">args_command</span> <span class="o">=</span> <span class="s1">''</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">get_command_part</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">])</span>
+  File <span class="nb">"py4j/java_gateway.py"</span>, line <span class="m">68</span>, in <span class="n">get_command_part</span>
 <span class="w">    </span><span class="n">command_part</span> <span class="o">=</span> <span class="n">REFERENCE_TYPE</span> <span class="o">+</span> <span class="n">parameter</span><span class="o">.</span><span class="n">get_object_id</span><span class="p">()</span>
-<span class="gr">AttributeError</span>: <span class="n">&#39;list&#39; object has no attribute &#39;get_object_id&#39;</span>
+<span class="gr">AttributeError</span>: <span class="n">'list' object has no attribute 'get_object_id'</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stack</span><span class="o">.</span><span class="n">getInternalList</span><span class="p">()</span>
-<span class="go">[u&#39;Third item&#39;, u&#39;First item&#39;, u&#39;First item&#39;, u&#39;Second item&#39;]</span>
+<span class="go">[u'Third item', u'First item', u'First item', u'Second item']</span>
 </pre></div>
 </div>
 <p>By default, Py4J does not support the conversion from pure Python lists to Java
