@@ -4,8 +4,20 @@ Changelog
 The changelog describes in plain English the changes that occurred between Py4J
 releases.
 
-Unreleased
-----------
+Py4J 0.11
+---------
+
+- Release date: TBD
+
+This is the first release since Py4J 0.10.9.9 (January 2025). It drops Python 2
+support, adds a suite of performance improvements, introduces a local
+performance-testing framework and continuous benchmarking in CI, and fixes
+several lifecycle and correctness bugs. The most important
+backwards-incompatible changes are listed first.
+
+- Python side: **Python 2 is no longer supported.** The Python 2 compatibility
+  layer has been removed. Py4J now requires Python 3.9 or newer (tested on
+  3.9–3.13). (#585)
 
 - Python side: Memoize attribute lookups on ``JVMView``,
   ``JavaPackage``, and ``JavaClass`` via a per-instance bounded LRU
@@ -20,6 +32,26 @@ Unreleased
   ``JavaGateway.shutdown()`` drops every tracked ``JVMView``'s
   attribute cache so cached references no longer pin the gateway
   client past shutdown. Closes issue #128; refs #557.
+
+- Python side: Faster ``bytearray`` decoding and hot-path shortcuts in
+  ``smart_decode`` on the protocol layer. Closes #570; credit to @markjm
+  (#575). (#593)
+
+- Python side: Cold-start improvements — tight-polling callback-server
+  readiness instead of a blind sleep, plus cold-start benchmark scenarios.
+  Refs #557. (#595)
+
+- Python + Java side: Disable Nagle's algorithm (``TCP_NODELAY``) on all Py4J
+  socket connections, reducing small-message round-trip latency. (#592)
+
+- Python side: Python 3 modernization — ``super()`` without arguments,
+  ``raise ... from``, packaging/version metadata, and light type hints. (#594)
+
+- Python side: Use the module logger instead of the root logger when sending a
+  command. (#499)
+
+- Java side: ``Iterator.next`` no longer silently ignores exceptions other than
+  the end-of-iteration signal. (#554)
 
 - Java side: Fix listener-lifecycle correctness bugs in
   ``GatewayServer`` / ``ClientServer``:
@@ -49,7 +81,15 @@ Unreleased
   ``shutdown(boolean)`` is unchanged (``gracePeriodMs == 0`` = abrupt,
   back-compat). Before this fix, ``shutdown()`` immediately force-closed all
   active connections, silently dropping work in flight — a real-world
-  data-loss risk for callback-heavy workflows.
+  data-loss risk for callback-heavy workflows. (#582)
+
+- Build, CI & testing: Add a local-run performance-testing framework (#578) and
+  CodSpeed continuous benchmarking, opt-in on pull requests via the
+  ``perf-check`` label (#584, #586, #587). Add bandwidth / cold-start /
+  latency-curve baseline coverage (#591) and close protocol / auth /
+  concurrency test-coverage gaps while hardening flaky tests and process
+  teardown (#590). Drop the sunset jcenter repository and retry Gradle on
+  transient CDN failures (#589). Upgrade GitHub Actions versions (#572).
 
 Py4J 0.10.9.9
 -------------
