@@ -5,14 +5,17 @@ Created on Apr 5, 2010
 """
 from contextlib import contextmanager
 from multiprocessing import Process
+import os
+import select
 import subprocess
 from threading import Thread
 from traceback import print_exc
 import unittest
+from unittest.mock import patch
 
 from py4j.java_gateway import (
     JavaGateway, PythonProxyPool, CallbackServerParameters,
-    set_default_callback_accept_timeout, is_instance_of)
+    set_default_callback_accept_timeout, is_instance_of, PY4J_FORCE_SELECT)
 from py4j.protocol import Py4JJavaError
 from py4j.tests.java_gateway_test import (
     PY4J_JAVA_PATH, safe_join, safe_shutdown, sleep, check_connection,
@@ -591,6 +594,76 @@ class LazyStartTest(unittest.TestCase):
         except Exception:
             print_exc()
             self.fail()
+
+
+class CallbackServerPollSelectTest(unittest.TestCase):
+    """Covers the CallbackServer accept loop under both back-ends:
+
+    - poll (the posix default; issue #559 -- avoids select's
+      ``FD_SETSIZE=1024`` ceiling so callback sockets with high fd
+      numbers still work), and
+    - select (Windows, or forced on posix via ``PY4J_FORCE_SELECT``).
+
+    The poll path is already exercised implicitly by every callback test
+    on posix CI; these tests pin it explicitly and add the otherwise
+    uncovered select fallback and env-var escape hatch.
+    """
+
+    def setUp(self):
+        self.p = start_example_app_process()
+        self.gateway = None
+        sleep()
+
+    def tearDown(self):
+        if self.gateway is not None:
+            safe_shutdown(self)
+        self.p.join()
+        os.environ.pop(PY4J_FORCE_SELECT, None)
+        sleep()
+
+    def _assert_callback_works(self):
+        # A Java->Python callback forces the accept loop to accept a
+        # callback connection, so it must have gone through the active
+        # back-end (poll or select) to succeed.
+        example = self.gateway.entry_point.getNewExample()
+        self.assertEqual("This is Hello!", example.callHello(IHelloImpl()))
+
+    @unittest.skipIf(os.name != "posix", "poll is only used on posix")
+    def testAcceptLoopUsesPollOnPosix(self):
+        # White-box: the accept loop must go through select.poll on posix
+        # (issue #559). wraps= lets the real poll run while recording it.
+        with patch("py4j.java_gateway.select.poll",
+                   wraps=select.poll) as mock_poll:
+            self.gateway = JavaGateway(
+                callback_server_parameters=CallbackServerParameters())
+            sleep()
+            self._assert_callback_works()
+        self.assertTrue(
+            mock_poll.called,
+            "poll() should back the accept loop on posix")
+
+    @unittest.skipIf(os.name != "posix", "select is the only path off posix")
+    def testForceSelectSkipsPoll(self):
+        # PY4J_FORCE_SELECT must make the accept loop use select even on
+        # posix, and callbacks must still work through it.
+        os.environ[PY4J_FORCE_SELECT] = "true"
+        with patch("py4j.java_gateway.select.poll",
+                   wraps=select.poll) as mock_poll:
+            self.gateway = JavaGateway(
+                callback_server_parameters=CallbackServerParameters())
+            sleep()
+            self._assert_callback_works()
+        mock_poll.assert_not_called()
+
+    def testCleanShutdownDrainsPool(self):
+        # A clean shutdown must drain the proxy pool without the poll-path
+        # teardown (poller.unregister in the finally) raising.
+        self.gateway = JavaGateway(
+            callback_server_parameters=CallbackServerParameters())
+        sleep()
+        self._assert_callback_works()
+        self.gateway.shutdown()
+        self.assertEqual(0, len(self.gateway.gateway_property.pool))
 
 
 if __name__ == "__main__":
