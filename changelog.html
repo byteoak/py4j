@@ -144,6 +144,15 @@ releases.</p>
 <section id="unreleased">
 <h2><span class="section-number">8.1. </span>Unreleased<a class="headerlink" href="#unreleased" title="Permalink to this heading">¶</a></h2>
 <ul class="simple">
+<li><p>Python side: The callback server’s accept loop now uses <code class="docutils literal notranslate"><span class="pre">select.poll()</span></code>
+instead of <code class="docutils literal notranslate"><span class="pre">select.select()</span></code> on POSIX systems. <code class="docutils literal notranslate"><span class="pre">select()</span></code> is bounded by
+<code class="docutils literal notranslate"><span class="pre">FD_SETSIZE</span></code> (typically 1024), so a callback-server socket assigned a file
+descriptor &gt;= 1024 – common in long-lived processes such as PySpark drivers
+that have opened many descriptors – raised <code class="docutils literal notranslate"><span class="pre">ValueError:</span> <span class="pre">filedescriptor</span> <span class="pre">out</span>
+<span class="pre">of</span> <span class="pre">range</span> <span class="pre">in</span> <span class="pre">select()</span></code>. <code class="docutils literal notranslate"><span class="pre">poll()</span></code> has no such limit. Windows, and any POSIX
+build without <code class="docutils literal notranslate"><span class="pre">select.poll</span></code>, continue to use <code class="docutils literal notranslate"><span class="pre">select()</span></code>. Set the
+<code class="docutils literal notranslate"><span class="pre">PY4J_FORCE_SELECT</span></code> environment variable (to <code class="docutils literal notranslate"><span class="pre">yes</span></code>/<code class="docutils literal notranslate"><span class="pre">y</span></code>/<code class="docutils literal notranslate"><span class="pre">t</span></code>/<code class="docutils literal notranslate"><span class="pre">true</span></code>)
+to force the legacy <code class="docutils literal notranslate"><span class="pre">select()</span></code> path on POSIX. Closes issue #559.</p></li>
 <li><p>Python side: Memoize attribute lookups on <code class="docutils literal notranslate"><span class="pre">JVMView</span></code>,
 <code class="docutils literal notranslate"><span class="pre">JavaPackage</span></code>, and <code class="docutils literal notranslate"><span class="pre">JavaClass</span></code> via a per-instance bounded LRU
 cache (default 1024 entries). Repeated walks along chains like
