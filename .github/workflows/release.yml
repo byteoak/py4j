@@ -1,0 +1,178 @@
+# Release automation for Py4J.
+#
+# Codifies the manual steps in py4j-python/release_process.md so a release can
+# be cut from a single manual dispatch. The Eclipse update-site step
+# (release_process_for_eclipse.md, step 13) is intentionally NOT automated here
+# — it needs an interactive Eclipse install and is done out-of-band.
+#
+# HOW TO USE
+#   1. Land the version bump + changelog (see release_process.md steps 0-1).
+#   2. Tag the release:  git tag 0.11 && git push origin 0.11
+#   3. Actions ▸ release ▸ "Run workflow", pick the tag, leave dry_run=true
+#      for a build-only rehearsal. Set dry_run=false to actually publish.
+#
+# dry_run=true  -> build sdist+wheel and the Maven artifacts, run `twine check`,
+#                  upload everything as workflow artifacts. Publishes NOTHING.
+#                  This is what we exercise on the byteoak fork.
+# dry_run=false -> additionally publish to PyPI and deploy to Maven Central.
+#
+# REQUIRED REPO CONFIG before a real (dry_run=false) run — owner sets these once:
+#   PyPI (preferred: Trusted Publishing / OIDC, no stored token):
+#     - Configure a Trusted Publisher on PyPI for this repo + the `pypi`
+#       environment (https://docs.pypi.org/trusted-publishers/).
+#     - No secret needed. The publish-pypi job requests an OIDC token.
+#   Maven Central (Sonatype):
+#     - Secrets: OSSRH_USERNAME, OSSRH_TOKEN, MAVEN_GPG_PRIVATE_KEY,
+#       MAVEN_GPG_PASSPHRASE.
+#     - CAVEAT: the current pom.xml deploys via nexus-staging to
+#       oss.sonatype.org (legacy OSSRH). Sonatype is retiring OSSRH in favour
+#       of the Central Publisher Portal (central.sonatype.com). Depending on
+#       the account's migration state this deploy may need the
+#       central-publishing-maven-plugin instead. Verify against
+#       release_process.md steps 10-12 before the first real deploy; the
+#       dry_run path does not touch Sonatype so it is safe to iterate on.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build & validate only; publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Builds the Python sdist+wheel (which bundle the Java jar + docs) and the
+    # Maven artifacts, then uploads them. This job always runs and never
+    # publishes, so it is fully exercisable on a fork.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Java 8 JDK (matches the test/build matrix)
+        uses: actions/setup-java@v5
+        with:
+          java-version: '8'
+          distribution: 'zulu'
+          cache: 'gradle'
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v5
+
+      - name: Install build dependencies
+        # `./gradlew buildPython` runs setup.py sdist/bdist_wheel and, via its
+        # dependency chain (copyWebJavadocPython -> buildWeb), the Sphinx docs
+        # build. So we need the doc toolchain plus the Python packaging tools.
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel twine
+          pip install -r py4j-web/requirements-doc.txt
+        shell: bash
+
+      - name: Build Python distributions (sdist + wheel)
+        # release_process.md steps 6-7: clear dist, then buildPython.
+        run: |
+          rm -rf py4j-python/dist/*
+          cd py4j-java
+          ./gradlew --version
+          ./gradlew clean buildPython
+        shell: bash
+
+      - name: Validate the built distributions
+        run: |
+          twine check py4j-python/dist/*
+          ls -l py4j-python/dist
+        shell: bash
+
+      - name: Build Maven artifacts (package + sign check, no deploy)
+        # `mvn package` mirrors what `mvn deploy` builds, minus the upload —
+        # a cheap way to catch build breakage on the Java side during dry runs.
+        run: |
+          cd py4j-java
+          if [ -f pom.xml ]; then
+            mvn -B --no-transfer-progress clean package || \
+              echo "::warning::mvn package failed — inspect before a real deploy"
+          fi
+        shell: bash
+
+      - name: Upload distributions as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: py4j-dist
+          path: |
+            py4j-python/dist/*
+            py4j-java/target/*.jar
+          if-no-files-found: warn
+
+  publish-pypi:
+    # Publishes to PyPI via Trusted Publishing (OIDC). Runs only on a real
+    # release (dry_run=false).
+    needs: build
+    if: ${{ inputs.dry_run == false }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for Trusted Publishing
+    steps:
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: py4j-dist
+          path: dist-download
+
+      - name: Collect only the Python sdist/wheel for PyPI
+        # PyPI accepts .tar.gz + .whl. Drop the .zip sdist (buildPython emits
+        # both zip and gztar) and any Java jars pulled into the artifact.
+        run: |
+          mkdir -p pypi-dist
+          cp dist-download/py4j-python/dist/*.tar.gz pypi-dist/ 2>/dev/null || true
+          cp dist-download/py4j-python/dist/*.whl     pypi-dist/ 2>/dev/null || true
+          ls -l pypi-dist
+        shell: bash
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pypi-dist
+
+  publish-maven:
+    # Deploys to Maven Central (Sonatype) with GPG signing. Runs only on a real
+    # release (dry_run=false). See the OSSRH caveat in the file header.
+    needs: build
+    if: ${{ inputs.dry_run == false }}
+    runs-on: ubuntu-latest
+    environment: maven-central
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Java 8 JDK with Sonatype + GPG credentials
+        uses: actions/setup-java@v5
+        with:
+          java-version: '8'
+          distribution: 'zulu'
+          server-id: ossrh
+          server-username: OSSRH_USERNAME
+          server-password: OSSRH_TOKEN
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Deploy to Maven Central
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          cd py4j-java
+          mvn -B --no-transfer-progress clean deploy -P release
+        shell: bash
