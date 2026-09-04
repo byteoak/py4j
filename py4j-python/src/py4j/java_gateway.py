@@ -952,7 +952,12 @@ class GatewayParameters(object):
 
 class CallbackServerParameters(object):
     """Wrapper class that contains all parameters that can be passed to
-    configure a `CallbackServer`
+    configure a `CallbackServer`.
+
+    On POSIX systems the callback server's accept loop uses ``select.poll()``,
+    which (unlike ``select.select()``) is not bounded by ``FD_SETSIZE``; set
+    the ``PY4J_FORCE_SELECT`` environment variable to force the legacy
+    ``select()`` path. Windows always uses ``select()``.
     """
 
     def __init__(
@@ -2622,12 +2627,15 @@ class CallbackServer(object):
             try:
                 if (
                     os.name == "posix"
+                    and hasattr(select, "poll")
                     and os.getenv(
                         PY4J_FORCE_SELECT, "").lower() not in PY4J_TRUE
                 ):
                     # On posix systems use poll to avoid problems with file
-                    # descriptor numbers above 1024 (unless we force select by
-                    # setting the PY4J_FORCE_SELECT environment variable).
+                    # descriptor numbers above 1024 (select is bounded by
+                    # FD_SETSIZE). Guarded by hasattr because a few posix
+                    # builds (e.g. Emscripten/WASM) ship select without poll.
+                    # Set PY4J_FORCE_SELECT to force the select path.
                     poller = select.poll()
                     for r in read_list:
                         poller.register(r, select.POLLIN)
@@ -2645,20 +2653,26 @@ class CallbackServer(object):
                             else 1000 * accept_timeout)
                         readable_fds = []
                         for fd, event in poller.poll(poll_timeout):
-                            if event & (select.POLLIN | select.POLLHUP):
-                                # POLLIN: a connection is waiting to be
-                                # accepted. POLLHUP: the peer hung up, so the
-                                # subsequent accept() returns/raises and is
-                                # handled below -- treating it as readable
-                                # matches how select surfaced this condition.
+                            if event & select.POLLIN:
+                                # A connection is waiting to be accepted.
                                 readable_fds.append(fd)
-                            else:
-                                # Pure POLLERR / POLLNVAL (select raised here
-                                # too). On shutdown the socket was closed under
-                                # us; the outer handler logs it quietly.
-                                raise Py4JError(
-                                    "Polling error: event {0} on fd {1}"
-                                    .format(event, fd))
+                            elif not self.is_shutdown:
+                                # POLLERR / POLLHUP / POLLNVAL without POLLIN
+                                # on the listening socket. The select-based
+                                # path passed an empty exceptional set -- it
+                                # ignored these conditions and kept waiting --
+                                # so mirror that here rather than tearing the
+                                # callback server down on a transient socket
+                                # error (a regression for long-lived servers,
+                                # the very case #559 targets). During shutdown
+                                # the socket was closed under us, so stay
+                                # silent. We deliberately do NOT accept() on a
+                                # POLLHUP-only event: accept() on a listening
+                                # socket with no pending connection blocks.
+                                logger.warning(
+                                    "Ignoring unexpected poll event %s on the "
+                                    "callback server listening socket (fd %s)",
+                                    event, fd)
                         readable = [
                             r for r in read_list if r.fileno() in readable_fds
                         ]
